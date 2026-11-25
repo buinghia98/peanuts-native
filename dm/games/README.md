@@ -106,6 +106,7 @@ One row per profile; the notes are each profile's `README.md`.
 | [Fast Fusion](040041E0212AE000/README.md) | `040041E0212AE000` | v262144 (Switch 2) | 20.5.13 (Ounce) | Shin'en's engine | NVN2 |
 | [Fire Emblem Engage](0100A6301214E000/README.md) | `0100A6301214E000` | 2.0.0 | 12.3.7 | Unity 2020.3.18f1 IL2CPP, Wwise | NVN |
 | [Fire Emblem Fortune's Weave](04007EF01F8AE000/README.md) | `04007EF01F8AE000` | v131072 (Switch 2) | 22.2.0 (Ounce) | Intelligent Systems' engine, NintendoWare | NVN2 |
+| [Fire Emblem Warriors: Three Hopes](010071F0143EA000/README.md) | `010071F0143EA000` | 1.0.2 (boots and plays: title, tutorial and camp on a Retroid Pocket Nova, Turnip T30 / R8) | 12.3.7 | Koei Tecmo's KTGL | NVN | <!-- PEANUTS: a profile of this fork, packed on a PC, checked on one device only -->
 | [Fire Emblem: Three Houses](010055D009F78000/README.md) | `010055D009F78000` | 1.2.0 | 6.5.0 | Koei Tecmo's KTGL | NVN |
 | [Ghost Trick: Phantom Detective](010029B018432000/README.md) | `010029B018432000` | 1.0.0 (base) | 13.3.0 | Capcom's RE Engine, Wwise | NVN |
 | [Hades](0100535012974000/README.md) | `0100535012974000` | 1.0.38233 | 9.3.0 | Supergiant Games' engine (The Forge) | Vulkan |

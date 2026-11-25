@@ -2797,6 +2797,16 @@ Left as they were: the hunks the check also flags that were unmarked before 0.1.
 `hle_fpslock.c` `limit_raw`, `loader.c` (two lines), `dm/host/tests/t_android_smap.c`, `dm/tools/docs_patches.py`, and the tests `test_android_soc.py`,
 `test_fpslocker_plan.py`, `test_game_profile.py`, `test_option_patch.py`, `test_vka_tex_registration.py`.
 
+### Fire Emblem Warriors: Three Hopes, a bring-up profile (2026-11-23)
+
+A new profile for Fire Emblem Warriors: Three Hopes (`010071F0143EA000`, update v131072 = 1.0.2), written from a survey of the game files and a PC shader split (63,902 shaders; no splitter change was needed: the newer KTGL RDB `.fdata` form is read as in ROMANCE OF THE THREE KINGDOMS 8 REMAKE). Packed on a Windows PC and booted on a Retroid Pocket Nova (Turnip). The profile files are all new and it has no `patches.py`. Its `tbuf_ssbo_copy on` row turns on the buffer-texture switch described in the next entry, and its graphics-settings and frame-rate rows use the shared loader and launcher changes listed further below.
+
+| File | Hunks | Change | Marker |
+|---|---|---|---|
+| `dm/games/010071F0143EA000/game.tsv`, `README.md` | new | the profile and its note | `# PEANUTS:` / `<!-- PEANUTS: ... -->` in the first lines; also allow-listed in `peanuts/upstream-unmarked.txt` |
+| `dm/games/010071F0143EA000/shader_map.tsv`, `shader_map.tsv.conflicts.tsv`, `shader_facts.tsv`, `shader_pairs.tsv`, `pso_pairs.tsv`, `pso_manifest.tsv`, `bf_want.tsv` | new | the generated tables | allow-listed in `peanuts/upstream-unmarked.txt` (read row by row) |
+| `dm/games/README.md` | 1 | the game's table row | `<!-- PEANUTS: ... -->` in the row's last cell |
+
 ### Buffer textures over storage buffer stores: a copy the GPU makes, behind a profile key (2026-11-24)
 
 The game's clustered light lists are written by a compute shader through a storage buffer and read by pixel shaders as buffer textures through row-wrap images; the row image held the CPU's bytes of an earlier frame, so dynamic lights blinked between frames. The host keeps a bounded storage buffer write as a GPU write of its own kind (value bit 2) and, while it is not done, reads a buffer texture of up to 4 MiB over it through the copy the GPU makes (`vka_tbuf_refresh`, upstream's), instead of the row image. It is switched by the profile key `tbuf_ssbo_copy` (default off; the game that needs it, Fire Emblem Warriors: Three Hopes, turns it on in its profile), and the environment variable `DM_VK_TBUF_GW_SSBO` (0 or 1) overrides the key. The host logs the value that applies and why once at start. A fix, so the launcher has no option for it. Hunk counts are against the shared graphics base.
