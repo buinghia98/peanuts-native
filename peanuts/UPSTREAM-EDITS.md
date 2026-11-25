@@ -2797,6 +2797,35 @@ Left as they were: the hunks the check also flags that were unmarked before 0.1.
 `hle_fpslock.c` `limit_raw`, `loader.c` (two lines), `dm/host/tests/t_android_smap.c`, `dm/tools/docs_patches.py`, and the tests `test_android_soc.py`,
 `test_fpslocker_plan.py`, `test_game_profile.py`, `test_option_patch.py`, `test_vka_tex_registration.py`.
 
+### Linear textures of another shape over the same storage: alias sync (2026-11-24)
+
+On the Switch two linear textures over the same bytes are one memory whatever their shapes. Here a texture of another shape or format over a live image's storage gets an image of its own (`same_shape`), so what the GPU drew through one never reached the other. Mario + Rabbids Sparks of Hope packs 4 R8 texels in one RGBA8 texel of its half-resolution ambient chain (640x360 R8 and 160x360 RGBA8, `LINEAR`, 640-byte rows, over one storage; `share miss` with `DM_VK_SHARE_MISS=1`); the lit shaders' occlusion input (`tcb_A`, the R8 view) read 0 in every frame and the shade drew near-black on the Retroid Pocket Nova. With `DM_VK_ALIAS_SYNC=1` (live, default 0) a GPU write into such a texture queues it (`as_queue_locked`, from `vka_img_written_at`), and at the next point with no pass open (`vka_tex_alias_flush`: the pass's end, before and after a dispatch, the next pass's begin, the submission's end before the copy-backs) its bytes are copied through scratch memory (image to buffer to image, full barriers around) into every live sibling of the same byte layout: same storage, same row bytes, stride and rows; one level, layer and sample; uncompressed colour; no level child, scaled, soft, sparse or video image; at most 16 MiB. The sibling is marked GPU-written but not queued (no copy back the other way); a newer write into a sibling drops the older queued entry. Each pair is logged once (`alias sync:`). With the switch on, a live sibling over the same storage that the gate rejects is logged once per pair, 16 lines in all (`alias sync: candidate rejected: <first failing condition>`, both images' size, format, row bytes, stride, rows and copy usage flags); it changes no decision. This is the peanuts form of the old nx2android port's `vk_tex_alias_sync` .
+
+| File | Hunks | Change | Marker |
+|---|---|---|---|
+| `dm/gfx/vk_android/vka_tex.c` | 5 | the queue, match and flush (`as_*`, `vka_tex_alias_flush`) before `vka_img_written_at`; its forward declaration; the queue call in `vka_img_written_at`; `as_cancel_locked` beside `bc_cancel_locked` in `vka_tex_drop_pool`; the flush at the top of `vka_tex_writeback` | `// PEANUTS begin(upstream-candidate)` / `end`, `// PEANUTS(upstream-candidate):` |
+| `dm/gfx/vk_android/vka_draw.c` | 4 | `vka_tex_alias_flush` at the end of `vka_rp_end`, in `rp_begin` before the pass is laid out, and in `vka_dispatch` after its `vka_rp_end` and after the dispatch is recorded | `// PEANUTS(upstream-candidate):` |
+| `dm/gfx/vk_android/vka.h` | 1 | the `vka_tex_alias_flush` declaration | `// PEANUTS(upstream-candidate):` |
+| `docs/env_switches.tsv`, `docs/advanced_settings.tsv` | 1 each | the `DM_VK_ALIAS_SYNC` rows | `[PEANUTS]` in the text / generated |
+
+Tests: Windows-runnable suites only; NDK aarch64 clang `-Wall -Wextra` syntax check clean on the changed lines. The device check is pending (`alias sync:` lines for the 640x360 R8 / 160x360 RGBA8 pair, shaded areas lit; `DM_VK_ALIAS_SYNC=0` the A/B). Upstream candidate: yes, after the device check; default on is a later decision.
+
+### Alias sync on by default for one title: `alias_sync` profile key (2026-11-24)
+
+The device check of `DM_VK_ALIAS_SYNC=1` passed (Retroid Pocket Nova, Turnip T30: shade-band near-black 48-78 % off, 0.0-0.1 % on, no crash, no change in frame rate), so Mario + Rabbids Sparks of Hope takes it on by default, as `event_wait`, `occlusion_split_pass` and the `low_ram_*` keys give a title its own default to a Vulkan switch. New game.tsv key `alias_sync` (`on` / `off`, default `off`): `game.py` `header()` checks it and emits `DM_GAME_ALIAS_SYNC`; the generic host's profile carries it as `alias_sync` (`gen_runtime_profile.py` `SCALAR` and `LAYOUT`, `profile_rt.h`, `game_profile_generic.h`; the schema version changes with the layout, so a `profile.bin` made before this change is refused); `vka_tex.c` `as_on()` reads `VKA_ENV("DM_VK_ALIAS_SYNC", DM_GAME_ALIAS_SYNC)`, so an env line of 0 or 1 (also live) wins over the key, and logs one line each time the state changes, the first call included: `alias sync: on (profile)`, `on (env)` or `off (env)`; nothing for a game whose profile leaves it off and whose env does not name it. The global default stays 0. Not part of the shader-inputs digest (`dmsh_chain.py --inputs` unchanged), so the same pack serves it. Upstream candidate: yes, with the alias sync above.
+
+| File | Hunks | Change | Marker |
+|---|---|---|---|
+| `dm/games/game.py` | 2 | the `alias_sync` check in `header()`; the `DM_GAME_ALIAS_SYNC` define | `PEANUTS(upstream-candidate)` |
+| `dm/peanuts/profile/gen_runtime_profile.py`, `profile_rt.h`, `game_profile_generic.h` | 1 each (3 in the generator) | `ALIAS_SYNC` in `SCALAR`, `LAYOUT` and the encoder; the `alias_sync` field; the macro | `PEANUTS(upstream-candidate)` |
+| `dm/peanuts/profile/test/dump_const.c`, `dump_runtime.c` | 1 each | the equivalence test prints `alias_sync` | `PEANUTS(upstream-candidate)` |
+| `dm/gfx/vk_android/vka_tex.c` | 2 | `as_on()` (state, source, log) in the alias-sync block; the call in `vka_img_written_at` replaces `VKA_ENV("DM_VK_ALIAS_SYNC", 0)` | `PEANUTS(upstream-candidate)` (inside the alias-sync begin / end) |
+| `dm/games/0100317013770000/game.tsv`, `README.md` | 1 each | `alias_sync on`; the README bullet | `PEANUTS` |
+| `dm/games/README.md`, `dm/tools/docs_patches.py`, `docs/agents/game-patches.md` | 1 each | the key's row; its patch-index entry; the page regenerated by the tool | `PEANUTS(upstream-candidate)` / generated |
+| `docs/env_switches.tsv`, `docs/advanced_settings.tsv` | 1 each | the `DM_VK_ALIAS_SYNC` rows (default, `profile_key alias_sync`) | `[PEANUTS]` in the text / generated |
+
+Tests: gen_runtime_profile `check-all`, `check-runtime-profile.sh` (equivalence of the generated header and `profile.bin`), the docs and Android suites, `advanced_switches.py --check`, `check-profiles.sh`; NDK aarch64 clang `-Wall -Wextra` syntax check of `vka_tex.c`.
+
 ### Frame limit and 3D-size option for one title (2026-11-24)
 
 Mario + Rabbids Sparks of Hope gets `game_args -fpslimit 60` and `fps_limit 30` (the game's own limit lifted so the host's frame limiter sets the rate; default 30) and an opt-in `option` / `option_patch` pair that makes the game's 3D scale 1.0 (two code words, exact main build, off by default). No host C code, patches.py or pack change. The only edits outside the title's profile are documentation and the docs tool.
@@ -3007,6 +3036,16 @@ A profile `option` row may carry the attribute `perf`: its switch is a Picture r
 | `dm/games/README.md`, `dm/games/010067300059A000/game.tsv`, `README.md`, `ProfileOptionsJvmTest.java`, `test_android_profile_options.py` | the row syntax, the Kingdom Battle option, its docs and tests | `PEANUTS` |
 
 Shared-Java owner (the Sparks of Hope clone) to adopt the same Java / build.gradle hunks (Profile, GameSettings, SidePanel, build.gradle) and `game.py` so a later shared patch does not drop them. Not device-tested.
+
+### Mario + Rabbids Kingdom Battle: `alias_sync on` (2026-11-25)
+
+The 8 window-pixel stripes on cliff and brick faces came from the same ambient-occlusion chain as Sparks of Hope (640x360 R8 and 160x360 RGBA8 over one storage): without the alias copy the lit pass read the unblurred occlusion. Device check (Retroid Pocket Nova, Turnip T30, `DM_VK_ALIAS_SYNC=1`): stripe amplitude at the cliff column 4.01 to 0.53, lower cliff face 2.87 to 0.25, lighting and 60 fps unchanged, 0 FATAL. The profile key from the Sparks of Hope entry above is used as it is; no host, schema (0x55026e6b) or shared-Java change.
+
+| File | Edit | Marker |
+|---|---|---|
+| `dm/games/010067300059A000/game.tsv`, `README.md` | the row `alias_sync on` and its README section | `PEANUTS` |
+| `dm/games/README.md`, `dm/tools/docs_patches.py`, `docs/env_switches.tsv`, `docs/advanced_settings.tsv` | the key's text names both games ("measured on two games") | `PEANUTS` / `[PEANUTS]` |
+| `docs/agents/game-patches.md` | regenerated by `dm/tools/docs_patches.py` | generated |
 
 ### Sparks of Hope clone: Kingdom Battle shared changes adopted
 

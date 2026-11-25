@@ -215,6 +215,8 @@ def header(g):
     if tsf not in ('on', 'off'): sys.exit(f'{g.id}: tex_soft must be on or off: {tsf}')
     evw = g.get('event_wait', 'on')   # Android: GPU event and sync waits across NVN queues honoured by the Vulkan replay (vka_worker.c qs_on; DM_VK_EVENT_WAIT overrides): on / off
     if evw not in ('on', 'off'): sys.exit(f'{g.id}: event_wait must be on or off: {evw}')
+    asy = g.get('alias_sync', 'off')   # PEANUTS(upstream-candidate): Android: GPU writes into a linear texture copied into the textures of other shapes over the same storage by default (vka_tex.c as_on; DM_VK_ALIAS_SYNC overrides, 0 / 1): on / off
+    if asy not in ('on', 'off'): sys.exit(f'{g.id}: alias_sync must be on or off: {asy}')   # PEANUTS(upstream-candidate)
     oqs = g.get('occlusion_split_pass', 'off')
     if oqs not in ('on', 'off'): sys.exit(f'{g.id}: occlusion_split_pass must be on or off: {oqs}')
     av1 = g.get('av1_decoder', 'hardware')   # Android: AV1 movies on the phone's hardware decoder (MediaCodec, the default) or dav1d frame-parallel (hle_movie_av1.c mav1_send)
@@ -596,6 +598,7 @@ def header(g):
          f'#define DM_GAME_TEX_SOFT {int(tsf == "on")}',
          f'#define DM_GAME_OCCLUSION_SPLIT_PASS {int(oqs == "on")}',
          f'#define DM_GAME_EVENT_WAIT {int(evw == "on")}',
+         f'#define DM_GAME_ALIAS_SYNC {int(asy == "on")}',   # PEANUTS(upstream-candidate)
          f'#define DM_GAME_GPU_TS_SEGMENT {int(gts == "segment")}',
          f'#define DM_GAME_DRAW_BARRIERS_GAME {int(dbr == "game")}',
          f'#define DM_GAME_VCONV_RANGE {int(vcr == "on")}',

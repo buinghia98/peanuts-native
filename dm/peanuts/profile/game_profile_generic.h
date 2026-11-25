@@ -77,6 +77,7 @@
 #define DM_GAME_NDRS_CTL (g_profile.ndrs_ctl)
 #define DM_GAME_NRES_LEVELS (g_profile.nres_levels)
 #define DM_GAME_EVENT_WAIT (g_profile.event_wait)
+#define DM_GAME_ALIAS_SYNC (g_profile.alias_sync)   // PEANUTS(upstream-candidate)
 #define DM_GAME_OCCLUSION_SPLIT_PASS (g_profile.occlusion_split_pass)
 #define DM_GAME_LOW_RAM_PLACE_PART_MB (g_profile.low_ram_place_part_mb)
 #define DM_GAME_LOW_RAM_IMG_CACHE_MAX_MB (g_profile.low_ram_img_cache_max_mb)

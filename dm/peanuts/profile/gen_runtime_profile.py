@@ -42,7 +42,7 @@ SCALAR = {
     'ROMFS_SUBST': ('romfs_subst', 'str'), 'NWINDOW_FN': ('nwindow_fn', 'int'), 'NSUBGROUP_ONE_LANE': ('nsubgroup_one_lane', 'int'),
     'NMESH_VEGETATION_CUT': ('nmesh_vegetation_cut', 'int'), 'NMESH_PREPASS_CUT': ('nmesh_prepass_cut', 'int'), 'NFPS_STEPS': ('nfps_steps', 'int'),
     'NDRS_CTL': ('ndrs_ctl', 'int'), 'NRES_LEVELS': ('nres_levels', 'int'),
-    'EVENT_WAIT': ('event_wait', 'int'), 'OCCLUSION_SPLIT_PASS': ('occlusion_split_pass', 'int'), 'LOW_RAM_PLACE_PART_MB': ('low_ram_place_part_mb', 'int'),
+    'EVENT_WAIT': ('event_wait', 'int'), 'ALIAS_SYNC': ('alias_sync', 'int'), 'OCCLUSION_SPLIT_PASS': ('occlusion_split_pass', 'int'), 'LOW_RAM_PLACE_PART_MB': ('low_ram_place_part_mb', 'int'),
     'LOW_RAM_IMG_CACHE_MAX_MB': ('low_ram_img_cache_max_mb', 'int'), 'LOW_RAM_APP_POOL_MB': ('low_ram_app_pool_mb', 'int'),
     'RENDER_DEFAULT_OUT': ('render_default_out', 'str'), 'NRENDER_CFG': ('nrender_cfg', 'int'), 'NRT_POOL': ('nrt_pool', 'int'),
     # PEANUTS(upstream-candidate): window_words / view_scale_words counts, upscale_pass
@@ -81,7 +81,7 @@ LAYOUT = [
     ('nmesh_vegetation_cut', 'u32'), ('mesh_vegetation_cut', 'u64[128]'), ('nmesh_prepass_cut', 'u32'), ('mesh_prepass_cut', 'row[64]:u64x4'),
     ('nfps_steps', 'u32'), ('fps_steps', 'row[8]:char[48]+u64+u32+u32+u32+u64[3]'), ('ndrs_ctl', 'u32'), ('drs_ctl', 'row[8]:char[48]+u64x4'),
     ('nres_levels', 'u32'), ('res_levels', 'row[8]:char[48]+u64+u32+u32+row[12]:u64+u32'),
-    ('event_wait', 'u32'), ('occlusion_split_pass', 'u32'), ('low_ram_place_part_mb', 'u32'), ('low_ram_img_cache_max_mb', 'u32'), ('low_ram_app_pool_mb', 'u32'),
+    ('event_wait', 'u32'), ('occlusion_split_pass', 'u32'), ('low_ram_place_part_mb', 'u32'), ('low_ram_img_cache_max_mb', 'u32'), ('low_ram_app_pool_mb', 'u32'), ('alias_sync', 'u32'),   # PEANUTS(upstream-candidate): alias_sync
     ('render_default_out', 'char[16]'), ('render_quality', 'u32[4]'),
     ('nrender_cfg', 'u32'), ('render_cfg', 'row[4]:char[48]+u64+u32x4+u32[8][4]+u32x5'),
     ('nrt_pool', 'u32'), ('rt_pool', 'row[4]:char[48]+char[16]+u64+u32x3+u32[4]x3+u32'),
@@ -516,7 +516,7 @@ def build_profile_bytes(g, modules_override=None):
     rl_rows = [row_res_levels(b_, table, lvln, nl, (lists + [(0, 0)] * 12)[:12]) for b_, table, lvln, nl, lists in rl]
     b, a = pack_rows(rl_rows, CAPS['res_levels'], zrl); p.sub(b, a)
 
-    for n in ('EVENT_WAIT', 'OCCLUSION_SPLIT_PASS', 'LOW_RAM_PLACE_PART_MB', 'LOW_RAM_IMG_CACHE_MAX_MB', 'LOW_RAM_APP_POOL_MB'): p.u32(as_int(val(n)))
+    for n in ('EVENT_WAIT', 'OCCLUSION_SPLIT_PASS', 'LOW_RAM_PLACE_PART_MB', 'LOW_RAM_IMG_CACHE_MAX_MB', 'LOW_RAM_APP_POOL_MB', 'ALIAS_SYNC'): p.u32(as_int(val(n)))   # PEANUTS(upstream-candidate): ALIAS_SYNC
     p.raw(unq(val('RENDER_DEFAULT_OUT')), 16)
     rq = [as_int(x) for x in split_top(unbrace(val('RENDER_QUALITY')))]
     assert len(rq) == 4, rq

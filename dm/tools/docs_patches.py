@@ -170,6 +170,10 @@ SWITCH_BINDING = [
      'why': 'separate passes restore disappearing cave geometry on Qualcomm 891.14. The exact interaction between the queries and the depth attachment remains open'}),
     ('event_wait', 'off', {'what': 'GPU event and sync waits across queues passed on the Vulkan replay', 'now': 'game', 'goal': 'host', 'purpose': 'frame rate',
      'why': 'parked waits cost this game a third of its frame rate and lose the device on Turnip V39; waits that cost no extra submissions would let every game keep them'}),
+    # PEANUTS begin(upstream-candidate): alias_sync
+    ('alias_sync', 'on', {'what': 'GPU writes into a linear texture copied into the textures of other shapes over the same storage', 'now': 'game', 'goal': 'host', 'purpose': 'rendering',
+     'why': 'on the Switch such textures are one memory; the copy costs scratch-memory transfers with full barriers, measured on two games only (Sparks of Hope, Kingdom Battle: GPU +0.1 to +0.3 ms): a default for every game once its cost is measured on the other games'}),
+    # PEANUTS end
     ('tex_dyn_slots', '', {'what': "buffer-texture handles indexed through c2's tables", 'now': 'game', 'goal': 'host', 'purpose': 'shaders',
      'why': "right only where the handle comes from c2's tables: the translator could prove that per shader"}),
     ('feedback_snap', '', {'what': 'draws that sample their own colour attachment read a snapshot', 'now': 'game', 'goal': 'host', 'purpose': 'rendering',

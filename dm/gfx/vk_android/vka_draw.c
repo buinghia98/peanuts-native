@@ -459,6 +459,7 @@ void vka_rp_end(void) {
     vka_tf_flush(g_cb);  // PEANUTS: what the pass's draws captured by transform feedback: copied into the game's buffers (vka_tf.c)
     R.on = 0; vka_tex_feedback(NULL, NULL, 0);
     if (vka_nan_on()) vka_nan_pass(g_cb, R.cim, R.clv, R.cl0, R.nci);
+    vka_tex_alias_flush(g_cb);   // PEANUTS(upstream-candidate): the pass's linear targets into their aliases of another shape (DM_VK_ALIAS_SYNC)
 }
 static void rt_peek(const char *what, int i, const tex_t *t, const vka_img *im, uint32_t lv, uint32_t l0, uint32_t nl);   // DM_VK_TEX_PEEK
 static void rt_range(const vka_img *im, const view_t *v, int has_v, uint32_t *lv, uint32_t *l0, uint32_t *nl);
@@ -580,6 +581,7 @@ static inline void rs_sc(const p_scissor *sc, int rsc, int64_t *x0, int64_t *y0,
 static int rp_begin(const p_set_rt *rt, int has_rt, const p_scissor *sc, int has_sc, const vka_dstate *d) {
     if (R.on) { if (!g_pass_keep || (rt_same(rt, has_rt, &R.rt, R.has_rt) && rp_area_fits(sc, has_sc, d, rt, has_rt))) return 1; vka_rp_end(); }   // a new SET_RT of other targets ends the pass at its first draw (exec does not)   // a new SET_RT of other targets ends the pass at its first draw (exec does not)
     if (PC.n && !rt_same(rt, has_rt, &PC.rt, 1)) pc_flush();                             // clears of other targets: done before
+    vka_tex_alias_flush(g_cb);   // PEANUTS(upstream-candidate): copies and clears since the last pass, into their aliases before this pass samples them (DM_VK_ALIAS_SYNC)
     // PEANUTS begin: the targets at one scale before the pass is laid out over them (DM_RES_SCALE)
     int rs = vka_rs_on() ? vka_rp_rs(rt, has_rt) : 0;
     if (rs < 0) { vka_rs_st.skip++; return 0; }
@@ -3649,6 +3651,7 @@ void vka_dispatch(vka_dstate *d, const p_dispatch *dp) {
     if (!g_cb || !draws_on() || !statics()) { g_skipped++; return; }
     if (!d->inited) vka_dstate_reset(d);
     vka_rp_end();
+    vka_tex_alias_flush(g_cb);   // PEANUTS(upstream-candidate): earlier copies and clears into their aliases before the dispatch reads them (DM_VK_ALIAS_SYNC)
     vka_shader *sh[VKA_NSTAGE] = {0}; unsigned bad = 0;
     if (!resolve(d->cprog, 5, &sh[5], &bad)) SKIP("dispatch skipped: no shader library");
     if (bad) { g_skipped++; g_skip_dev[VKS_SHADER]++; return; }
@@ -3798,6 +3801,7 @@ void vka_dispatch(vka_dstate *d, const p_dispatch *dp) {
         VkCommandBuffer was = atomic_exchange(&vka_disp_pend, g_cb);
         if (was == g_cb) g_disp_saved++;   // the one the dispatch before this one left: never recorded
     }
+    vka_tex_alias_flush(g_cb);   // PEANUTS(upstream-candidate): the storage images it wrote into their aliases of another shape (DM_VK_ALIAS_SYNC)
     vka_rw_point(g_cb, 'd', sh[5]->key, 0, 0);
     if (vka_nan_on()) {   // DM_VK_NANSCAN: the storage images this dispatch wrote
         vka_img *ims[32]; int m = 0;
