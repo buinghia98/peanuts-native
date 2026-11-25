@@ -23,8 +23,9 @@ zip_store	.sdfdata:.sdftoc:.metallib
 
 # ---- Memory ----
 # Snowdrop's compact 3 GB address region, SDK node area and 100 MB C-library heap fit this 5 GB guest block.
-mem_reserve	0x140000000
-mem_alias	0x118000000
+# PEANUTS: Android layout: 6 GB guest block, 5.375 GB alias region, Snowdrop's address region 4 GB = 2 GB large + 1 GB 512 KB pages + 1 GB 64 KB pages (patches.py); the Mac/iOS values were 5 GB / 4.375 GB / 3 GB. Android only: iOS caps one reservation at 6 GB and has proven 5 GB. Both rows change together (alias <= reserve - 256 MB).
+mem_reserve	0x180000000
+mem_alias	0x158000000
 mem_stack	0x10000000
 app_pool	0xCD500000
 # the NPDM declares 16 MB of system resource

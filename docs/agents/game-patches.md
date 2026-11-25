@@ -505,11 +505,11 @@ Every patch bound tighter than it could be: the open gaps, then the blocked, kep
 
 - **`build` → `game`**, address space, gap, checked: both games' functions compared by fingerprint and disassembly, 2026-10-29: Snowdrop three-pool allocator: 12 GB of ranges → 3 GB. Mario + Rabbids Kingdom Battle and Sparks of Hope build the same source routine differently: 44% of the instructions alike, fields 8 bytes apart, every callee different, other cut offsets and bytes (checked 2026-10-29), so no Snowdrop rule; a function-matched rule could carry it over the game's updates. The cause, an iPhone's address space, is a platform limit
 
-- **1.9.589692 `main`** `3b39e0c0…` ([patches.py:11](../../dm/games/010067300059A000/patches.py#L11))
-  - cut `+0xea2190`: Snowdrop pool sizes: initialize each range to 512 MB
-  - cut `+0xea21c0`: Snowdrop combined range end: 12 GB to 3 GB
+- **1.9.589692 `main`** `3b39e0c0…` ([patches.py:16](../../dm/games/010067300059A000/patches.py#L16))
+  - cut `+0xea2190`: Snowdrop pool sizes: initialize each range to 1 GB
+  - cut `+0xea21c0`: Snowdrop combined range end: 12 GB to 4 GB
   - cut `+0xea21c4`: Prepare the large range size of 2 GB; reserve wrapper discards incoming x1
-  - cut `+0xea21cc`: Snowdrop combined reservation: 12 GB to 3 GB
+  - cut `+0xea21cc`: Snowdrop combined reservation: 12 GB to 4 GB
   - cut `+0xea21d0`: Override the large range size field to 2 GB; reserve wrapper discards incoming x2
   - cut `+0xea21f4`: Large allocator maximum 64 KB page count: 65536 to 32768, matching its 2 GB range
 
