@@ -190,7 +190,67 @@ int main(void) {
       for (int k = 1; k < 3; k++) { sub++;
           CHECK(made_key_old == fence_last + 1, "the old key cannot tell submission %d of the frame from the first", k + 1);
           CHECK(!vka_tbuf_copy_live(made_sub, sub), "a copy of the frame's first submission is not bound in submission %d", k + 1); } }
+    // PEANUTS: the scratch copy of a compute shader's storage texel buffer the device cannot view where it is (vka_tbuf.h vka_tbuf_store_*; vka_draw.c tbuf_store_view)
+    // The switch's value: a set variable wins over the profile both ways, unset the profile decides, the default (profile off) is off
+    CHECK(!vka_tbuf_store_eff(0, 0, 0) && !vka_tbuf_store_eff(0, 1, 0), "unset, profile off: off (the variable's value is not read)");
+    CHECK(vka_tbuf_store_eff(0, 0, 1) && vka_tbuf_store_eff(0, 1, 1), "unset, profile on: on");
+    CHECK(vka_tbuf_store_eff(1, 1, 0) && !vka_tbuf_store_eff(1, 0, 1) && !vka_tbuf_store_eff(1, 0, 0) && vka_tbuf_store_eff(1, 1, 1), "a set variable wins over the profile, both ways");
+    // The choice, over every combination: 1 only for a storage texel buffer of a dispatch, placed and unaligned, of 1 .. VKTB_STORE_MAX bytes, a multiple of its texel, switch on
+    { static const uint64_t bs[] = {0, 4, 32, 208, 4096, VKTB_STORE_MAX, VKTB_STORE_MAX + 4}; static const uint32_t ts[] = {0, 4, 16}; int on = 0, tot = 0;
+      for (int sw = 0; sw < 2; sw++) for (int st = 0; st < 2; st++) for (int d = 0; d < 2; d++) for (int pl = 0; pl < 2; pl++) for (int al = 0; al < 2; al++)
+      for (unsigned bi = 0; bi < sizeof bs / sizeof *bs; bi++) for (unsigned ti = 0; ti < sizeof ts / sizeof *ts; ti++) {
+          uint64_t b = bs[bi]; uint32_t t = ts[ti];
+          int want = sw && st && d && pl && !al && b && b <= VKTB_STORE_MAX && t && b % t == 0;
+          int got = vka_tbuf_store_choice(sw, st, d, pl, al, b, t); tot++; on += got;
+          CHECK(got == want, "choice sw %d storage %d dispatch %d placed %d aligned %d bytes %llu texel %u: %d, expected %d", sw, st, d, pl, al, (unsigned long long)b, t, got, want);
+          if (!sw) CHECK(!got, "switch off: never");
+      }
+      CHECK(on > 0 && on < tot, "some combinations choose it (%d of %d)", on, tot);
+      CHECK(vka_tbuf_store_choice(1, 1, 1, 1, 0, 208, 4) && vka_tbuf_store_choice(1, 1, 1, 1, 0, 32, 16), "the two Kingdom Battle bindings (208 bytes of R32, 32 of RGBA32F)");
+      CHECK(!vka_tbuf_store_choice(1, 1, 1, 1, 0, 6, 4), "a size that is not a multiple of the texel is not copied"); }
+    // The read path is untouched by the switch: vka_tbuf_path never looks at it (an unaligned storage texel buffer is still empty there)
+    CHECK(vka_tbuf_path(1, 208, 1, 0, 1, 0, 0) == VKTB_NONE, "an unaligned storage texel buffer is empty in vka_tbuf_path as before");
+    // The alias rule
+    #define AL(a, n, f, rw, oa, on, of, orw, os) vka_tbuf_store_alias(a, n, f, rw, oa, on, of, orw, os)
+    CHECK(AL(0x1000, 208, 100, 1, 0x2000, 64, 100, 1, 1) == VKTB_AL_NONE && AL(0x1000, 208, 100, 1, 0x10d0, 64, 100, 1, 1) == VKTB_AL_NONE, "disjoint (and adjacent) ranges do not alias");
+    CHECK(AL(0x1000, 208, 100, 1, 0x1000, 208, 100, 0, 1) == VKTB_AL_SAME, "the same bytes in the same format of another storage texel buffer share the copy");
+    CHECK(AL(0x1000, 208, 100, 1, 0x1000, 208, 100, 0, 0) == VKTB_AL_REFUSE, "the same bytes through a read-only uniform texel buffer, this one storing: refused (that one would read the old bytes)");
+    CHECK(AL(0x1000, 208, 100, 0, 0x1000, 208, 100, 0, 0) == VKTB_AL_NOTE, "read-only both ways: a note only");
+    CHECK(AL(0x1000, 208, 100, 0, 0x1000, 208, 98, 0, 1) == VKTB_AL_REFUSE && AL(0x1000, 208, 100, 0, 0x1000, 208, 98, 0, 0) == VKTB_AL_REFUSE, "another format of the same bytes is refused");
+    CHECK(AL(0x1000, 208, 100, 1, 0x1040, 64, -1, 0, 0) == VKTB_AL_REFUSE, "a partial overlap with a binding that is no texel buffer view: refused when this one stores");
+    CHECK(AL(0x1000, 208, 100, 0, 0x1040, 64, -1, 0, 0) == VKTB_AL_NOTE, "a read-only overlap on both sides: noted, not refused");
+    CHECK(AL(0x1000, 208, 100, 0, 0x1040, 64, -1, 1, 0) == VKTB_AL_REFUSE, "an overlap with a binding that stores: refused");
+    CHECK(AL(0x1000, 0, 100, 1, 0x1000, 8, 100, 1, 1) == VKTB_AL_NONE && AL(0x1000, 8, 100, 1, 0x1000, 0, 100, 1, 1) == VKTB_AL_NONE, "an empty range overlaps nothing");
+    #undef AL
+    // The registry: the Kingdom Battle case (38c757aa0b2d5dea binding 5: 0x4096bb7960, 208 bytes, VkFormat 100; 6df283f716e87420 binding 2: 0x4096258ea0, 32 bytes, VkFormat 109, in other dispatches)
+    { vktb_store R; vktb_store_reset(&R); CHECK(R.n == 0, "empty");
+      int a = vktb_store_add(&R, 0x4096bb7960ull, 208, 100, 1, 0);
+      CHECK(a == 0 && vktb_store_find(&R, 0x4096bb7960ull, 208, 100) == 0 && vktb_store_find(&R, 0x4096bb7960ull, 208, 109) < 0 && vktb_store_find(&R, 0x4096bb7960ull, 204, 100) < 0, "found by bytes, size and format");
+      CHECK(vktb_store_add(&R, 0x4096bb7960ull + 208, 16, 100, 1, 256) == 1, "a disjoint range is a separate entry");
+      CHECK(vktb_store_add(&R, 0x4096bb7960ull + 100, 64, 100, 1, 512) == -2 && R.n == 2, "a partial overlap with a binding that stores: refused, nothing added");
+      CHECK(vktb_store_add(&R, 0x4096bb7960ull, 208, 109, 0, 512) == -2, "the same bytes in another format: refused");
+      CHECK(R.e[0].rw == 1 && R.e[0].soff == 0 && R.e[1].soff == 256, "entries keep their offsets and the store flag");
+      vktb_store_reset(&R); CHECK(R.n == 0 && vktb_store_find(&R, 0x4096bb7960ull, 208, 100) < 0, "reset empties it");
+      CHECK(vktb_store_add(&R, 0x4096258ea0ull, 32, 109, 1, 0) == 0, "the second Kingdom Battle binding, in its own dispatch");
+      vktb_store_reset(&R);
+      for (int i = 0; i < VKTB_STORE_N; i++) CHECK(vktb_store_add(&R, 0x10000ull + 0x1000ull * i, 32, 109, 1, 64u * i) == i, "entry %d", i);
+      CHECK(vktb_store_add(&R, 0x90000ull, 32, 109, 1, 0) == -1 && R.n == VKTB_STORE_N, "a full registry refuses (-1)");
+      vktb_store_reset(&R);
+      CHECK(vktb_store_add(&R, 0x4096bb7960ull, 208, 100, 0, 0) == 0 && vktb_store_add(&R, 0x4096bb7960ull + 4, 8, 100, 0, 256) == 1, "read-only overlaps are both kept (a note in the replay)"); }
+    // The offsets in the slot's scratch buffer: a multiple of the device's alignment (64) and of 16, never overlapping the previous copy, refused past the slot
+    { uint32_t used = 0, off = 0, prev_end = 0; int okn = 0;
+      static const uint64_t ns[] = {208, 32, 4, 64, 65, 1000, 16};
+      for (unsigned i = 0; i < sizeof ns / sizeof *ns; i++) {
+          int ok = vka_tbuf_store_off(used, 64, ns[i], VKTB_STORE_SLOT, &off);
+          CHECK(ok && off % 64 == 0 && off % 16 == 0 && off >= prev_end && off + ns[i] <= VKTB_STORE_SLOT, "copy %u at %u (used %u)", i, off, used);
+          if (ok) { used = off + (uint32_t)ns[i]; prev_end = used; okn++; } }
+      CHECK(okn == 7, "all of them fit a slot");
+      uint32_t o2 = 77; CHECK(vka_tbuf_store_off(0, 64, VKTB_STORE_SLOT, VKTB_STORE_SLOT, &o2) && o2 == 0, "a copy of the whole slot fits at 0");
+      o2 = 77; CHECK(!vka_tbuf_store_off(1, 64, VKTB_STORE_SLOT, VKTB_STORE_SLOT, &o2) && o2 == 77, "past the slot: refused, the offset is left alone");
+      CHECK(!vka_tbuf_store_off(VKTB_STORE_SLOT - 32, 64, 4, VKTB_STORE_SLOT, &o2), "the last bytes, rounded up past the slot: refused");
+      CHECK(vka_tbuf_store_off(1, 4, 4, VKTB_STORE_SLOT, &o2) && o2 == 16, "an alignment under 16 is raised to 16");
+      CHECK(!vka_tbuf_store_off(0, 64, 0, VKTB_STORE_SLOT, &o2), "no bytes: no copy"); }
     if (fails) { printf("t_android_tbuf: %d FAILED\n", fails); return 1; }
-    printf("t_android_tbuf: ok (%d choices; the pending writes; the image of a buffer texture and a draw's answers; the copy kept for a submission)\n", n);
+    printf("t_android_tbuf: ok (%d choices; the pending writes; the image of a buffer texture and a draw's answers; the copy kept for a submission; the scratch copy of an unaligned storage texel buffer: the switch, the choice, the alias rule, the registry, the offsets)\n", n);
     return 0;
 }

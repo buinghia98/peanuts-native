@@ -221,6 +221,8 @@ def header(g):
     if oqs not in ('on', 'off'): sys.exit(f'{g.id}: occlusion_split_pass must be on or off: {oqs}')
     tsc = g.get('tbuf_ssbo_copy', 'off')   # PEANUTS: Android: buffer textures over a shader's storage buffer stores read a copy the GPU makes (vka_draw.c tbuf_img_ask, vka_tbuf.h; DM_VK_TBUF_GW_SSBO overrides): on / off
     if tsc not in ('on', 'off'): sys.exit(f'{g.id}: tbuf_ssbo_copy must be on or off: {tsc}')   # PEANUTS
+    tst = g.get('tbuf_store_copy', 'off')   # PEANUTS: Android: a compute shader's storage texel buffer at an offset the device cannot view is stored through an aligned scratch copy, copied back (vka_draw.c tbuf_store_view, vka_tbuf.h; DM_VK_TBUF_STORE_COPY overrides): on / off
+    if tst not in ('on', 'off'): sys.exit(f'{g.id}: tbuf_store_copy must be on or off: {tst}')   # PEANUTS
     av1 = g.get('av1_decoder', 'hardware')   # Android: AV1 movies on the phone's hardware decoder (MediaCodec, the default) or dav1d frame-parallel (hle_movie_av1.c mav1_send)
     if av1 not in ('hardware', 'dav1d'): sys.exit(f'{g.id}: av1_decoder must be hardware or dav1d: {av1}')
     # Android, devices of 12 GB or less (MemTotal up to 12 GiB; vka_lowram.h): defaults the Vulkan replay takes there only, for a profile that sets them. 0 = not set
@@ -600,6 +602,7 @@ def header(g):
          f'#define DM_GAME_TEX_SOFT {int(tsf == "on")}',
          f'#define DM_GAME_OCCLUSION_SPLIT_PASS {int(oqs == "on")}',
          f'#define DM_GAME_TBUF_SSBO_COPY {int(tsc == "on")}',   # PEANUTS: tbuf_ssbo_copy
+         f'#define DM_GAME_TBUF_STORE_COPY {int(tst == "on")}',   # PEANUTS: tbuf_store_copy
          f'#define DM_GAME_EVENT_WAIT {int(evw == "on")}',
          f'#define DM_GAME_ALIAS_SYNC {int(asy == "on")}',   # PEANUTS(upstream-candidate)
          f'#define DM_GAME_GPU_TS_SEGMENT {int(gts == "segment")}',

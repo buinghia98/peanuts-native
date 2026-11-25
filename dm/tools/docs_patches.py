@@ -171,6 +171,9 @@ SWITCH_BINDING = [
     # PEANUTS: tbuf_ssbo_copy, the host's copy of buffer textures over a compute pass's storage buffer stores
     ('tbuf_ssbo_copy', 'on', {'what': "buffer textures over a pass's storage buffer stores read through a copy the GPU makes", 'now': 'game', 'goal': 'host', 'purpose': 'rendering',
      'why': 'the light lists of this game blink between frames without it; off elsewhere because the copy and its pass split cost GPU time and no other game is measured with it: measured on more games, the host could take it for every game'}),
+    # PEANUTS: tbuf_store_copy, the host's aligned scratch copy of a compute dispatch's storage texel buffer at an offset the device cannot view
+    ('tbuf_store_copy', 'on', {'what': "compute storage texel buffers at an offset the device cannot view are stored through an aligned scratch copy", 'now': 'game', 'goal': 'host', 'purpose': 'rendering',
+     'why': "off elsewhere because the copy and its barriers cost GPU time and no other game is known to hit the refusal: the host could take it for every game once measured, since it sits on the refusal path"}),
     ('event_wait', 'off', {'what': 'GPU event and sync waits across queues passed on the Vulkan replay', 'now': 'game', 'goal': 'host', 'purpose': 'frame rate',
      'why': 'parked waits cost this game a third of its frame rate and lose the device on Turnip V39; waits that cost no extra submissions would let every game keep them'}),
     # PEANUTS begin(upstream-candidate): alias_sync

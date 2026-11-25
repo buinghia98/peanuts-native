@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
     printf("event_wait=%d\n", (int)p->event_wait); printf("occlusion_split_pass=%d\n", (int)p->occlusion_split_pass);
     printf("alias_sync=%d\n", (int)p->alias_sync);   // PEANUTS(upstream-candidate)
     printf("low_ram_place_part_mb=%d\n", (int)p->low_ram_place_part_mb); printf("low_ram_img_cache_max_mb=%d\n", (int)p->low_ram_img_cache_max_mb);
-    printf("low_ram_app_pool_mb=%d\n", (int)p->low_ram_app_pool_mb); printf("tbuf_ssbo_copy=%d\n", (int)p->tbuf_ssbo_copy); printf("render_default_out=%s\n", p->render_default_out);
+    printf("low_ram_app_pool_mb=%d\n", (int)p->low_ram_app_pool_mb); printf("tbuf_ssbo_copy=%d\n", (int)p->tbuf_ssbo_copy); printf("tbuf_store_copy=%d\n", (int)p->tbuf_store_copy); printf("render_default_out=%s\n", p->render_default_out);
     printf("render_quality=%d,%d,%d,%d\n", (int)p->render_quality[0], (int)p->render_quality[1], (int)p->render_quality[2], (int)p->render_quality[3]);
     printf("nrender_cfg=%d\n", (int)p->nrender_cfg);
     for (int i = 0; i < (int)p->nrender_cfg; i++) {
