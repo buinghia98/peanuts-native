@@ -2796,3 +2796,12 @@ Left as they were: the hunks the check also flags that were unmarked before 0.1.
 `dm/games/0100A6301214E000/game.tsv`, `dm/games/game.py`, `hle_nvn.c` `nvnWindowGetPresentInterval`, `vka_tex.c` (one line), `dm/host/dm.h`,
 `hle_fpslock.c` `limit_raw`, `loader.c` (two lines), `dm/host/tests/t_android_smap.c`, `dm/tools/docs_patches.py`, and the tests `test_android_soc.py`,
 `test_fpslocker_plan.py`, `test_game_profile.py`, `test_option_patch.py`, `test_vka_tex_registration.py`.
+
+### MVGL archives with 24-byte data entries (2026-11-26)
+
+The Hundred Line -Last Defense Academy- (`010093C0215B4000`) keeps its shaders in Media.Vision's MVGL archives (`*.nx64.mvgl`) in the 64-bit layout of Digimon Story Time Stranger, but each data entry is 24 bytes (u64 offset, u64 length, u64 stored length), not 16. `mvgl.py` did not take these archives as the 64-bit layout (their tables do not end at the data start with 16-byte entries), so it read them as the 32-bit layout and the split found only the 179 shaders in `main`. `data_entry` now tells the two entry sizes apart by where the tables end, 16 first, so Digimon's archives read as before. The split of The Hundred Line 1.2.1 finds 7,204 shaders (7,026 from the archives).
+
+| File | Hunks | Change | Marker |
+|---|---|---|---|
+| `dm/gfx/tools/mvgl.py` | 3 | `wide` also takes 24-byte data entries; `data_entry` gives the entry size; `Archive` reads the entries by it | `PEANUTS begin`/`end`, `PEANUTS` |
+| `peanuts/tests/test_mvgl_wide.py` | 3 | `test_reader_24`: an archive with 24-byte entries reads, and `data_entry` gives 16 for the 16-byte one | `PEANUTS begin`/`end`, `PEANUTS` (a Peanuts-owned file) |
