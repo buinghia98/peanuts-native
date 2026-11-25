@@ -104,6 +104,7 @@ typedef struct {
     uint32_t nview_scale_steps; dm_pf_steps_t view_scale_steps[DM_PROFILE_WORDS_CAP];
     // PEANUTS(upstream-candidate): view_scale_fixed rows, directly after view_scale_steps (a shared group: before any clone-local field)
     uint32_t nview_scale_fixed; dm_pf_fixed_t view_scale_fixed[DM_PROFILE_WORDS_CAP];
+    uint32_t tbuf_ssbo_copy;   // PEANUTS: the first field after the shared groups (a game-specific key, off by default)
 } dm_game_profile_t;
 
 // A few checkpoints along the layout (found in review), so a field inserted or resized in the wrong place fails the build here, at the

@@ -79,6 +79,7 @@
 #define DM_GAME_EVENT_WAIT (g_profile.event_wait)
 #define DM_GAME_ALIAS_SYNC (g_profile.alias_sync)   // PEANUTS(upstream-candidate)
 #define DM_GAME_OCCLUSION_SPLIT_PASS (g_profile.occlusion_split_pass)
+#define DM_GAME_TBUF_SSBO_COPY (g_profile.tbuf_ssbo_copy)
 #define DM_GAME_LOW_RAM_PLACE_PART_MB (g_profile.low_ram_place_part_mb)
 #define DM_GAME_LOW_RAM_IMG_CACHE_MAX_MB (g_profile.low_ram_img_cache_max_mb)
 #define DM_GAME_LOW_RAM_APP_POOL_MB (g_profile.low_ram_app_pool_mb)

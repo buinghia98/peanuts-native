@@ -177,7 +177,7 @@ next sync (found in review: upstream added 6 macros in the 73 commits since the 
 | `dm/host/loader.c` `dm_pf_rcfg_rows()` (new) | `RENDER_CFG` | builds `rcfg_row_t` rows (pointers into `g_profile.render_cfg[].build`) once, `pthread_once`; used by `render_cfg_row()`, `rt_pool_apply()` and hle_render.c |
 | `dm/host/loader.c` `render_cfg_row()`, `rt_pool_apply()` | `RENDER_CFG`/`NRENDER_CFG` | read `dm_pf_rcfg_rows()` instead of a `static const` array |
 | `dm/host/loader.c` `dm_pf_rtpool_rows()` (new), `rt_pool_apply()` | `RT_POOL`/`NRT_POOL` | builds `rtpool_row_t` rows over `g_profile.rt_pool[]` once, `pthread_once` |
-| (no site edit) | `EVENT_WAIT`, `OCCLUSION_SPLIT_PASS`, `LOW_RAM_PLACE_PART_MB`, `LOW_RAM_IMG_CACHE_MAX_MB`, `LOW_RAM_APP_POOL_MB` | scalars read at run time (vka_worker.c, vka_exec.c, vka_tex.c, hle_svc.c); `game_profile_generic.h` maps each to its `g_profile` field |
+| (no site edit) | `EVENT_WAIT`, `OCCLUSION_SPLIT_PASS`, `LOW_RAM_PLACE_PART_MB`, `LOW_RAM_IMG_CACHE_MAX_MB`, `LOW_RAM_APP_POOL_MB`, `TBUF_SSBO_COPY` | scalars read at run time (vka_worker.c, vka_exec.c, vka_tex.c, vka_draw.c, hle_svc.c); `game_profile_generic.h` maps each to its `g_profile` field |
 | `dm/gfx/vk_android/vka_pso.c` | seed (`vk_prewarm_seed.h`) | not edited: `dm/peanuts/profile/vk_prewarm_seed_generic.h` defines the same `dm_vk_prewarm_seed`/`_len` symbols, set by `profile_rt_load_seed()` |
 | `dm/gfx/vk_android/vka_replay.c` `nxhost_replay()` top | - | calls `profile_rt_load()`/`profile_rt_load_seed()` too (nxreplay needs a profile for its `DM_GAME_ID` capture check) |
 
@@ -2796,6 +2796,28 @@ Left as they were: the hunks the check also flags that were unmarked before 0.1.
 `dm/games/0100A6301214E000/game.tsv`, `dm/games/game.py`, `hle_nvn.c` `nvnWindowGetPresentInterval`, `vka_tex.c` (one line), `dm/host/dm.h`,
 `hle_fpslock.c` `limit_raw`, `loader.c` (two lines), `dm/host/tests/t_android_smap.c`, `dm/tools/docs_patches.py`, and the tests `test_android_soc.py`,
 `test_fpslocker_plan.py`, `test_game_profile.py`, `test_option_patch.py`, `test_vka_tex_registration.py`.
+
+### Buffer textures over storage buffer stores: a copy the GPU makes, behind a profile key (2026-11-24)
+
+The game's clustered light lists are written by a compute shader through a storage buffer and read by pixel shaders as buffer textures through row-wrap images; the row image held the CPU's bytes of an earlier frame, so dynamic lights blinked between frames. The host keeps a bounded storage buffer write as a GPU write of its own kind (value bit 2) and, while it is not done, reads a buffer texture of up to 4 MiB over it through the copy the GPU makes (`vka_tbuf_refresh`, upstream's), instead of the row image. It is switched by the profile key `tbuf_ssbo_copy` (default off; the game that needs it, Fire Emblem Warriors: Three Hopes, turns it on in its profile), and the environment variable `DM_VK_TBUF_GW_SSBO` (0 or 1) overrides the key. The host logs the value that applies and why once at start. A fix, so the launcher has no option for it. Hunk counts are against the shared graphics base.
+
+| File | Hunks | Change | Marker |
+|---|---|---|---|
+| `dm/gfx/vk_android/vka.h` | 1 | declarations of `vka_tex_gw_ssbo`, `vka_tex_gw_ssbo_pending`, `vka_tbuf_img_counts` | `PEANUTS` |
+| `dm/gfx/vk_android/vka_tbuf.h` | 2 | value bits `VKTB_GW_TB` / `VKTB_GW_SSBO`, `vka_tbuf_gw_new_bits`, `vka_tbuf_ssbo_mark`, `vka_tbuf_img_gw` (the 4 MiB cap) and `vka_tbuf_ssbo_eff` (the switch's value: the variable when set, else the key); `<stdlib.h>` | `PEANUTS begin`/`end` |
+| `dm/gfx/vk_android/vka_tex.c` | 6 | the tracker counts the two bits apart (`g_gw_ss`, `gw_count`); `vka_tex_gw_ssbo`, `vka_tex_gw_ssbo_pending`; `vka_tex_gw_tbuf_pending` tests bit 1 only | `PEANUTS begin`/`end` |
+| `dm/gfx/vk_android/vka_tbuf.c` | 2 | the GPU image copies and their bytes counted (`vka_tbuf_img_counts`) | `PEANUTS` |
+| `dm/gfx/vk_android/vka_draw.c` | 4 | `TBUF_SSBO_SW()` (`VKA_ENV("DM_VK_TBUF_GW_SSBO", DM_GAME_TBUF_SSBO_COPY)`); `tbuf_img_ask` takes the GPU copy for a pending SSBO write; `stage_writes` marks a bounded read-write storage buffer; the `tbuf ssbo:` log note and the copies per frame in the `texel buffers per frame` line | `PEANUTS begin`/`end`, `PEANUTS` |
+| `dm/gfx/vk_android/vka_dev.c` | 2 | the start-up line `tbuf ssbo: GPU copy of buffer textures over storage buffer stores on|off (profile tbuf_ssbo_copy ...; DM_VK_TBUF_GW_SSBO ...)`; the include | `PEANUTS begin`/`end`, `PEANUTS` |
+| `dm/host/tests/t_android_tbuf.c` | 1 | the SSBO bit, the tracker counts, the 4 MiB cap, the switch's value (variable over key, key default off) | `PEANUTS` |
+| `dm/games/game.py` | 2 | the key `tbuf_ssbo_copy` (`on` / `off`, default off) and `DM_GAME_TBUF_SSBO_COPY` in `header()` | `PEANUTS` |
+| `dm/peanuts/profile/gen_runtime_profile.py`, `profile_rt.h`, `game_profile_generic.h`, `test/dump_const.c`, `test/dump_runtime.c` | 3, 1, 1, 1, 1 | the generic host's field `tbuf_ssbo_copy` (SCALAR, LAYOUT and the packer, the struct, the macro, the equivalence dump): the field is the first after the shared groups (`view_scale_fixed`); the profile blob grows from 14,576 to 14,584 bytes and the schema stamp changes (`0x962d49e1` to `0x32084bed`), so every generic host and its `profile.bin` are built together as before; a modded pack's own `profile.bin` (`pack_android.py --modules`) made before this change is refused until it is made again | Peanuts-owned (`dm/peanuts/**`) |
+| `dm/tools/docs_patches.py`, `dm/games/README.md` | 1 each | the key's documentation entry and its row in the key table; `docs/agents/game-patches.md` regenerated | `PEANUTS` |
+| `docs/env_switches.tsv`, `docs/advanced_settings.tsv` | 1 each | the `DM_VK_TBUF_GW_SSBO` rows: the variable overrides the profile key | `[PEANUTS]` in the text / generated |
+| `docs/reference/rendering.md`, `docs/agents/symptoms.md` | 1 each | the entry "Buffer textures over storage buffer stores read a stale copy (Android)" and its generated symptom line | `<!-- PEANUTS: an entry of this fork. -->` |
+| `peanuts/tests/test_tbuf_ssbo_copy_key.py` | new | the header and the profile blob carry the key (off by default, a bad value is refused, `on` reaches the blob as one u32); the assertions about the game's own profile run only where its rows are present | Peanuts-owned |
+
+Tests: `t_android_tbuf` (MinGW gcc), `check-profiles.sh`, `check-runtime-profile.sh` (171 profiles, the compile-time and the runtime profile equal field by field), `gen_runtime_profile.py check-all`, `test_game_profile.py`, `test_env_switches.py`, `test_android_recommend.py`, `test_tbuf_ssbo_copy_key.py`. Upstream candidate: the host change yes (the replay code is upstream's), as a profile key (`tbuf_ssbo_copy`) or default on once other games are measured with it; the profile's row of the key no.
 
 ### Linear textures of another shape over the same storage: alias sync (2026-11-24)
 

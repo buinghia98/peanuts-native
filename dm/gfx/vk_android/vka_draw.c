@@ -1452,10 +1452,10 @@ static unsigned g_tbv_n;   // PEANUTS: views in g_tbv now
 typedef struct { uint64_t addr, n, fence, seq; VkFormat f; VkBufferView v; } tbc_ent;
 static tbc_ent g_tbc[64]; static uint64_t g_tbc_copies, g_tbc_hits, g_tbc_bytes, g_tbv_made, g_tbv_restarts;
 void vka_tbuf_stats(char *b, size_t n, double frames) {   // since the last line
-    static uint64_t c0, h0, b0, m0, r0;
-    snprintf(b, n, "texel buffers per frame: %.1f views made in place (table started again %.2f times), %.1f copies of the CPU's bytes (%.2f MB), %.1f bindings of a copy made earlier in the submission",
-             (g_tbv_made - m0) / frames, (g_tbv_restarts - r0) / frames, (g_tbc_copies - c0) / frames, (g_tbc_bytes - b0) / frames / 1e6, (g_tbc_hits - h0) / frames);
-    c0 = g_tbc_copies; h0 = g_tbc_hits; b0 = g_tbc_bytes; m0 = g_tbv_made; r0 = g_tbv_restarts;
+    static uint64_t c0, h0, b0, m0, r0, ic0, ib0; uint64_t ic, ib; vka_tbuf_img_counts(&ic, &ib);   // PEANUTS: ic, ib: buffer texture images copied on the GPU (vka_tbuf.c)
+    snprintf(b, n, "texel buffers per frame: %.1f views made in place (table started again %.2f times), %.1f copies of the CPU's bytes (%.2f MB), %.1f bindings of a copy made earlier in the submission; buffer texture images copied on the GPU %.2f (%.2f MB)",
+             (g_tbv_made - m0) / frames, (g_tbv_restarts - r0) / frames, (g_tbc_copies - c0) / frames, (g_tbc_bytes - b0) / frames / 1e6, (g_tbc_hits - h0) / frames, (ic - ic0) / frames, (ib - ib0) / frames / 1e6);
+    c0 = g_tbc_copies; h0 = g_tbc_hits; b0 = g_tbc_bytes; m0 = g_tbv_made; r0 = g_tbv_restarts; ic0 = ic; ib0 = ib;
 }
 // PEANUTS: the copies are forgotten at each submission's start (vka_draw_sub_begin). They were matched by vka_fence_last() + 1 alone, which is not the submission being
 // recorded when the worker has reserved the fences of several submissions ahead (Hogwarts Legacy: three a frame, all reserved before the first is recorded): a copy made
@@ -1489,8 +1489,24 @@ static void tbuf_gw_note(const vka_shader *sh, const vka_res *r, uint64_t addr, 
 // Upstream's copy only when it can be made and read (vka_tbuf.h vka_tbuf_img_choice). The answer is kept for the draw or dispatch (g_tig: reset where its images
 // are first asked for, draw_body and vka_dispatch), and the copy is bound only when it was made, or found current, as the draw's images were made (fresh)
 static vktb_memo g_tig;
+// PEANUTS begin: DM_VK_TBUF_GW_SSBO's value: the environment variable when it is set (live), else the game profile's tbuf_ssbo_copy (game.tsv; default off)
+#define TBUF_SSBO_SW() (VKA_ENV("DM_VK_TBUF_GW_SSBO", DM_GAME_TBUF_SSBO_COPY) != 0)
+// PEANUTS end
+// PEANUTS begin: DM_VK_TBUF_GW_SSBO's note: once per texture ID the first time a storage buffer's pending stores send it to the GPU's copy, and once when they do not, with why
+static void tbuf_ssbo_note(int tid, uint64_t addr, uint64_t bytes, int chosen, int cls, int fits, int placed, int grid, int cap) {
+    static int seen[2][64], n[2]; int k = chosen != 0;
+    for (int i = 0; i < n[k]; i++) if (seen[k][i] == tid) return;
+    if (n[k] == 64) return;
+    seen[k][n[k]++] = tid;
+    uint64_t vka_frame(void);
+    if (chosen) VLOG("tbuf ssbo: frame %llu texture ID %d at %#llx (%llu bytes): a storage buffer's stores over it are not done, read through a copy made on the GPU", (unsigned long long)vka_frame(), tid, (unsigned long long)addr, (unsigned long long)bytes);
+    else VLOG("tbuf ssbo: frame %llu texture ID %d at %#llx (%llu bytes): a storage buffer's stores over it are not done, but the CPU's row image stays (class %d fits %d placed %d grid %d size within %llu %d)", (unsigned long long)vka_frame(), tid,
+              (unsigned long long)addr, (unsigned long long)bytes, cls, fits, placed, grid, (unsigned long long)VKTB_SSBO_IMG_MAX, cap);
+}
+// PEANUTS end
 static int tbuf_img_ask(int tid, uint8_t dim) {
-    if (!vka_tex_gw_tbuf_pending(0, UINT64_MAX)) return 0;   // (no such store kept anywhere: one load)
+    int ss = TBUF_SSBO_SW();   // PEANUTS: a storage buffer's stores count too (vka_tbuf.h)
+    if (!vka_tex_gw_tbuf_pending(0, UINT64_MAX) && !(ss && vka_tex_gw_ssbo_pending(0, UINT64_MAX))) return 0;   // (no such store kept anywhere: one load)   // PEANUTS: or a storage buffer's
     int sw = VKA_ENV("DM_VK_TBUF_GW", 1) && VKA_ENV("DM_VK_TBUF", 1);
     int shape = !(dim & (DMSH_VK_DIM_ARRAY | DMSH_VK_DIM_MS | DMSH_VK_DIM_DEPTH)) && (dim & DMSH_VK_DIM_MASK) <= 1;
     uint64_t addr; uint32_t elems; int format; vka_fmt f;
@@ -1499,7 +1515,12 @@ static int tbuf_img_ask(int tid, uint8_t dim) {
     int fits = (dim & DMSH_VK_DIM_MASK) != 1 || (elems + 16383) / 16384 <= V.props.limits.maxImageDimension2D;
     uint64_t bytes = (uint64_t)elems * f.bpb; VkBuffer b; VkDeviceSize o = 0;
     int placed = vka_addr_run(addr, bytes, &b, &o) >= bytes;
-    return vka_tbuf_img_choice(sw, shape, want == have, fits, vka_tex_gw_tbuf_pending(addr, bytes), placed, placed && !(o % f.bpb));
+    // PEANUTS begin: the GPU's copy also while a bounded storage buffer's stores over a texture of up to VKTB_SSBO_IMG_MAX bytes are pending (DM_VK_TBUF_GW_SSBO)
+    int tbp = vka_tex_gw_tbuf_pending(addr, bytes), ssp = ss && !tbp && vka_tex_gw_ssbo_pending(addr, bytes), cap = 0, grid = placed && !(o % f.bpb);
+    int c = vka_tbuf_img_choice(sw, shape, want == have, fits, vka_tbuf_img_gw(tbp, ss, bytes, ssp, &cap), placed, grid);
+    if (ssp) tbuf_ssbo_note(tid, addr, bytes, c, want == have, fits, placed, grid, cap);
+    return c;
+    // PEANUTS end
 }
 static int tbuf_img_gpu(int tid, uint8_t dim) {
     int k = vktb_memo_find(&g_tig, tid, dim);
@@ -1647,7 +1668,10 @@ static int stage_writes(const vka_dstate *d, int st, const vka_shader *sh, const
             int storage = r[i].desc == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             switch (r[i].what) {
             case VKA_R_BUF: ok = storage ? ssbo_desc(r[i].addr, r[i].size, bi) : ubo_desc(r[i].addr, r[i].size, bi);
-                if (ok && storage && (r[i].flags & DMSH_VK_BF_RW)) vka_tex_gw_opaque(r[i].addr, bi->range);   // the shader may store into it
+                if (ok && storage && (r[i].flags & DMSH_VK_BF_RW)) {   // the shader may store into it
+                    if (vka_tbuf_ssbo_mark(TBUF_SSBO_SW(), bi->range)) vka_tex_gw_ssbo(r[i].addr, bi->range);   // PEANUTS: kept as a storage buffer's stores (vka_tbuf.h)
+                    else vka_tex_gw_opaque(r[i].addr, bi->range);
+                }
                 if (ok && storage) sb_peek_note(sh->key, st, &r[i]);
                 if (ok && !storage) ub_peek_note(sh->key, st, &r[i]);
                 if (ok && !storage && st == 1 && g_cup.view && g_cup.nub) cup_ubo(sh, &r[i], bi);   // PEANUTS: composite upscaler: the texel-size field at the output's size

@@ -800,6 +800,11 @@ typedef struct { uint64_t lo, hi, src, seq, fence; uint32_t kind, value; uint8_t
 static gw_t *g_gw; static int g_ngw, g_gwcap; static uint64_t g_gwseq = 1, g_gw_over, g_gw_late;
 static uint64_t g_gw_done;   // PEANUTS: (under g_tmu) vka_done() as the last vka_tex_prepare read it for the done writes it dropped (vka_tex_gw_tbuf_pending)
 static _Atomic int g_gw_tb;   // PEANUTS: the entries of g_gw that are a storage texel buffer's stores (GW_OPAQUE with value 1: vka_tex_gw_tbuf), so vka_tex_gw_tbuf_pending need not look when there is none. Changed under g_tmu
+static _Atomic int g_gw_ss;   // PEANUTS: the same for a storage buffer's stores (value bit 2: vka_tex_gw_ssbo, DM_VK_TBUF_GW_SSBO; vka_tbuf.h), counted on their own
+static void gw_count(uint32_t bits, int d) {   // PEANUTS: (g_gw_tb, g_gw_ss) bits gained (d = 1) or dropped (d = -1) by an entry
+    if (bits & VKTB_GW_TB) atomic_fetch_add_explicit(&g_gw_tb, d, memory_order_relaxed);
+    if (bits & VKTB_GW_SSBO) atomic_fetch_add_explicit(&g_gw_ss, d, memory_order_relaxed);
+}
 static void gw_add(int kind, uint64_t dst, uint64_t n, uint64_t src, uint32_t value, const void *data) {
     if (!n) return;
     vka_tbuf_wrote(dst, n);   // (images of buffer textures over it are copied again at their next use)
@@ -807,7 +812,7 @@ static void gw_add(int kind, uint64_t dst, uint64_t n, uint64_t src, uint32_t va
     if (g_ngw == g_gwcap) { g_gwcap = g_gwcap ? 2 * g_gwcap : 256; g_gw = realloc(g_gw, (size_t)g_gwcap * sizeof *g_gw); }
     if (kind == GW_OPAQUE)   // the same range again in this submission (a storage buffer bound by draw after draw): one entry, at the newest place
         for (int i = g_ngw - 1; i >= 0 && i >= g_ngw - 16 && !g_gw[i].fence; i--) if (g_gw[i].kind == GW_OPAQUE && g_gw[i].lo == dst && g_gw[i].hi == dst + n) {
-            gw_t w = g_gw[i]; memmove(&g_gw[i], &g_gw[i + 1], (size_t)(g_ngw - 1 - i) * sizeof *g_gw); w.seq = g_gwseq++; if (value && !w.value) atomic_fetch_add_explicit(&g_gw_tb, 1, memory_order_relaxed); w.value |= value; /* PEANUTS: a storage texel buffer's flag stays (vka_tex_gw_tbuf), counted in g_gw_tb */ g_gw[g_ngw - 1] = w; pthread_mutex_unlock(&g_tmu); return; }
+            gw_t w = g_gw[i]; memmove(&g_gw[i], &g_gw[i + 1], (size_t)(g_ngw - 1 - i) * sizeof *g_gw); w.seq = g_gwseq++; gw_count(vka_tbuf_gw_new_bits(w.value, value), 1); w.value |= value; /* PEANUTS: a storage texel buffer's (or storage buffer's) flag stays (vka_tex_gw_tbuf, vka_tex_gw_ssbo), counted per bit in g_gw_tb / g_gw_ss */ g_gw[g_ngw - 1] = w; pthread_mutex_unlock(&g_tmu); return; }
     if (kind == GW_UPDATE)   // the same inline update range again in this submission (Splatoon Raiders' 1,550 occlusion queries: 11,010 updates to 7 ranges): overwrite in place
         for (int i = g_ngw - 1; i >= 0 && i >= g_ngw - 16 && !g_gw[i].fence; i--) {
             if (g_gw[i].kind == GW_COPY) break;
@@ -820,7 +825,7 @@ static void gw_add(int kind, uint64_t dst, uint64_t n, uint64_t src, uint32_t va
         }
     uint8_t *cp = NULL; if (kind == GW_UPDATE && (cp = malloc(n))) memcpy(cp, data, n); else if (kind == GW_UPDATE) kind = GW_OPAQUE;
     g_gw[g_ngw++] = (gw_t){dst, dst + n, src, g_gwseq++, 0, (uint32_t)kind, value, cp};
-    if (kind == GW_OPAQUE && value) atomic_fetch_add_explicit(&g_gw_tb, 1, memory_order_relaxed);   // PEANUTS: (g_gw_tb)
+    if (kind == GW_OPAQUE) gw_count(vka_tbuf_gw_new_bits(0, value), 1);   // PEANUTS: (g_gw_tb, g_gw_ss)
     pthread_mutex_unlock(&g_tmu);
 }
 void vka_tex_gw_copy(uint64_t src, uint64_t dst, uint64_t n) { gw_add(GW_COPY, dst, n, src, 0, NULL); }
@@ -841,10 +846,23 @@ int vka_tex_gw_tbuf_pending(uint64_t addr, uint64_t n) {
     // went from 1 to 0 while a submission was recorded sent a draw to bytes that are uploaded again only at the next prepare (where the write is dropped and the
     // textures over it are re-uploaded). So the answer changes at a prepare, or by a store this thread records
     uint64_t done = g_gw_done;
-    for (int i = g_ngw - 1; i >= 0 && !r; i--) r = vka_tbuf_gw_pending(g_gw[i].lo, g_gw[i].hi, g_gw[i].fence, g_gw[i].kind == GW_OPAQUE && g_gw[i].value, addr, addr + n, done);
+    for (int i = g_ngw - 1; i >= 0 && !r; i--) r = vka_tbuf_gw_pending(g_gw[i].lo, g_gw[i].hi, g_gw[i].fence, g_gw[i].kind == GW_OPAQUE && (g_gw[i].value & VKTB_GW_TB), addr, addr + n, done);   // PEANUTS: bit 1 only (a storage buffer's bit 2 never reaches tbuf_view)
     pthread_mutex_unlock(&g_tmu);
     return r;
 }
+// PEANUTS begin: a bounded storage buffer's stores, kept with value bit 2 (DM_VK_TBUF_GW_SSBO; vka_tbuf.h): an opaque write like any other, and while it is not done a buffer
+// texture over the range read through an image binding takes the copy the GPU makes (vka_draw.c tbuf_img_ask). Asked as vka_tex_gw_tbuf_pending is (the fence as the last prepare read it)
+void vka_tex_gw_ssbo(uint64_t dst, uint64_t n) { gw_add(GW_OPAQUE, dst, n, 0, VKTB_GW_SSBO, NULL); }
+int vka_tex_gw_ssbo_pending(uint64_t addr, uint64_t n) {
+    int r = 0;
+    if (!atomic_load_explicit(&g_gw_ss, memory_order_relaxed)) return 0;
+    pthread_mutex_lock(&g_tmu);
+    uint64_t done = g_gw_done;
+    for (int i = g_ngw - 1; i >= 0 && !r; i--) r = vka_tbuf_gw_pending(g_gw[i].lo, g_gw[i].hi, g_gw[i].fence, g_gw[i].kind == GW_OPAQUE && (g_gw[i].value & VKTB_GW_SSBO), addr, addr + n, done);
+    pthread_mutex_unlock(&g_tmu);
+    return r;
+}
+// PEANUTS end
 // The newest write's sequence number now, and whether a write recorded after `seq` (not done) overlaps [addr, addr + n): a copy of the range taken at `seq` is still what the
 // GPU will read (vka_draw.c tbuf_view's copy kept for the submission)
 uint64_t vka_tex_gw_seq(void) { pthread_mutex_lock(&g_tmu); uint64_t s = g_gwseq - 1; pthread_mutex_unlock(&g_tmu); return s; }
@@ -4256,7 +4274,7 @@ void vka_tex_prepare(VkCommandBuffer cb, uint64_t fence) {   // PEANUTS: image r
                 if (g_gw_late <= 8) VLOG("texture serial %llu %ux%u format %#x: a GPU write into its storage (%s %#llx+%#llx) is done, re-uploaded", (unsigned long long)im->serial, im->w, im->h, im->d.format,
                                           w->kind == GW_COPY ? "copy" : w->kind == GW_FILL ? "fill" : w->kind == GW_UPDATE ? "inline update" : "store", (unsigned long long)w->lo, (unsigned long long)(w->hi - w->lo));
             }
-            if (w->kind == GW_OPAQUE && w->value) atomic_fetch_sub_explicit(&g_gw_tb, 1, memory_order_relaxed);   // PEANUTS: (g_gw_tb)
+            if (w->kind == GW_OPAQUE) gw_count(vka_tbuf_gw_new_bits(0, w->value), -1);   // PEANUTS: (g_gw_tb, g_gw_ss)
             free(w->data);
         }
         #undef GW_TAKES

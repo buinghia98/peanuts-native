@@ -113,6 +113,76 @@ int main(void) {
     #undef ASK
     (void)nc;
 
+    // PEANUTS: a storage buffer's (SSBO) stores, value bit 2 (DM_VK_TBUF_GW_SSBO; vka_tbuf.h). A model of the tracker's entries with their value bits and the two counts
+    // vka_tex.c keeps (g_gw_tb, g_gw_ss: bits counted on their 0 -> 1 transition at an add or a merge, taken off when the entry is dropped)
+    { typedef struct { uint64_t lo, hi, fence; uint32_t value; } ent;
+      ent E[8]; int ne = 0, ctb = 0, css = 0; uint64_t S = 0x40920bb740ull, SN = 0x200020, T = S + 0x20, TN = 2u << 20;
+      #define CNT(bits, d) do { uint32_t b_ = (bits); if (b_ & VKTB_GW_TB) ctb += (d); if (b_ & VKTB_GW_SSBO) css += (d); } while (0)
+      #define ADD(a, n, v) do { int j_ = -1; for (int i_ = 0; i_ < ne; i_++) if (!E[i_].fence && E[i_].lo == (a) && E[i_].hi == (a) + (n)) j_ = i_; \
+                                if (j_ >= 0) { CNT(vka_tbuf_gw_new_bits(E[j_].value, (v)), 1); E[j_].value |= (v); } else { E[ne++] = (ent){(a), (a) + (n), 0, (v)}; CNT(vka_tbuf_gw_new_bits(0, (v)), 1); } } while (0)
+      #define DROP(dn) do { int k_ = 0; for (int i_ = 0; i_ < ne; i_++) { if (E[i_].fence && E[i_].fence <= (dn)) { CNT(vka_tbuf_gw_new_bits(0, E[i_].value), -1); continue; } E[k_++] = E[i_]; } ne = k_; } while (0)
+      #define PEND(bit, a, n, dn) ({ int r_ = 0; for (int i_ = 0; i_ < ne && !r_; i_++) r_ = vka_tbuf_gw_pending(E[i_].lo, E[i_].hi, E[i_].fence, (E[i_].value & (bit)) != 0, (a), (a) + (n), (dn)); r_; })
+      #define RECOUNT(bit) ({ int c_ = 0; for (int i_ = 0; i_ < ne; i_++) c_ += (E[i_].value & (bit)) != 0; c_; })
+      uint64_t dn = 30;
+      // the bits
+      CHECK(vka_tbuf_gw_new_bits(0, VKTB_GW_SSBO) == VKTB_GW_SSBO && vka_tbuf_gw_new_bits(VKTB_GW_SSBO, VKTB_GW_SSBO) == 0, "bit 2 is new once");
+      CHECK(vka_tbuf_gw_new_bits(VKTB_GW_SSBO, VKTB_GW_TB) == VKTB_GW_TB && vka_tbuf_gw_new_bits(VKTB_GW_TB | VKTB_GW_SSBO, 3) == 0, "bit 1 on an SSBO entry is new; both held: nothing new");
+      CHECK(vka_tbuf_gw_new_bits(0, 0) == 0 && vka_tbuf_gw_new_bits(0, 4) == 0, "a plain opaque write (and unknown bits) counts in neither");
+      // the light list's writer: bit 2 only. Never pending for the texel buffer path (tbuf_view asks for bit 1: vka_tex_gw_tbuf_pending), pending for the image choice until done
+      ADD(S, SN, VKTB_GW_SSBO);
+      CHECK(ctb == 0 && css == 1, "an SSBO write: counted in g_gw_ss only (%d %d)", ctb, css);
+      CHECK(!PEND(VKTB_GW_TB, T, TN, dn), "an SSBO write is never pending for a texel buffer");
+      CHECK(PEND(VKTB_GW_SSBO, T, TN, dn), "pending for the image choice while the submission is recorded");
+      for (int i = 0; i < ne; i++) if (!E[i].fence) E[i].fence = 31;
+      CHECK(PEND(VKTB_GW_SSBO, T, TN, dn) && !PEND(VKTB_GW_TB, T, TN, dn), "queued, not done: still pending (image), still not (texel buffer)");
+      { int cap; CHECK(vka_tbuf_img_choice(1, 1, 1, 1, vka_tbuf_img_gw(0, 1, TN, PEND(VKTB_GW_SSBO, T, TN, dn), &cap), 1, 1) && cap, "switch on, pending, 2 MiB: the GPU's copy");
+        CHECK(!vka_tbuf_img_choice(1, 1, 1, 1, vka_tbuf_img_gw(0, 0, TN, PEND(VKTB_GW_SSBO, T, TN, dn), &cap), 1, 1), "switch off: the row image, as before"); }
+      dn = 31; DROP(dn);
+      CHECK(!PEND(VKTB_GW_SSBO, T, TN, dn) && ne == 0 && ctb == 0 && css == 0, "done and dropped: not pending, counts back to 0 (%d %d)", ctb, css);
+      { int cap; CHECK(!vka_tbuf_img_choice(1, 1, 1, 1, vka_tbuf_img_gw(0, 1, TN, PEND(VKTB_GW_SSBO, T, TN, dn), &cap), 1, 1), "done: the row image (uploaded again by the prepare)"); }
+      // one entry with both bits (a storage texel buffer and a storage buffer over the same range in one submission, in either order): counts balanced through add, merge, drop
+      ADD(S, SN, VKTB_GW_SSBO); ADD(S, SN, VKTB_GW_TB); ADD(S, SN, VKTB_GW_SSBO); ADD(S, SN, 0);
+      CHECK(ne == 1 && E[0].value == (VKTB_GW_TB | VKTB_GW_SSBO) && ctb == 1 && css == 1, "merged: one entry, both bits, each counted once (%d %d)", ctb, css);
+      CHECK(PEND(VKTB_GW_TB, T, TN, dn) && PEND(VKTB_GW_SSBO, T, TN, dn), "both questions see it");
+      ADD(0x50000000ull, 4096, VKTB_GW_TB); ADD(0x60000000ull, 4096, 0); ADD(0x60000000ull, 4096, VKTB_GW_SSBO);
+      CHECK(ctb == RECOUNT(VKTB_GW_TB) && css == RECOUNT(VKTB_GW_SSBO) && ctb == 2 && css == 2, "counts equal a recount (%d %d)", ctb, css);
+      for (int i = 0; i < ne; i++) if (!E[i].fence) E[i].fence = 32;
+      dn = 32; DROP(dn);
+      CHECK(ne == 0 && ctb == 0 && css == 0, "all done: counts back to 0 (%d %d)", ctb, css);
+      #undef CNT
+      #undef ADD
+      #undef DROP
+      #undef PEND
+      #undef RECOUNT
+    }
+    // which storage buffer writes are kept as SSBO writes: the switch on, a bounded range of up to 64 MiB (one bound without a size covers the whole storage range)
+    CHECK(!vka_tbuf_ssbo_mark(0, 0x200020), "switch off: a plain opaque write, as before");
+    CHECK(vka_tbuf_ssbo_mark(1, 0x200020) && vka_tbuf_ssbo_mark(1, VKTB_SSBO_RANGE_MAX), "switch on, bounded: an SSBO write");
+    CHECK(!vka_tbuf_ssbo_mark(1, VKTB_SSBO_RANGE_MAX + 1) && !vka_tbuf_ssbo_mark(1, ~0ull) && !vka_tbuf_ssbo_mark(1, 0), "over 64 MiB, VK_WHOLE_SIZE, empty: a plain opaque write");
+    // the texture size cap and the inputs of the image choice's gw
+    for (int m = 0; m < 16; m++) {
+        int tb = m & 1, sw = m >> 1 & 1, ssp = m >> 2 & 1, big = m >> 3 & 1, cap = -1; uint64_t bytes = big ? VKTB_SSBO_IMG_MAX + 4 : VKTB_SSBO_IMG_MAX;
+        int g = vka_tbuf_img_gw(tb, sw, bytes, ssp, &cap);
+        CHECK(cap == !big, "cap %d for %llu bytes", cap, (unsigned long long)bytes);
+        if (tb) CHECK(g, "a storage texel buffer's stores: the copy as before, whatever the SSBO rule (%#x)", m);
+        if (!tb) CHECK(g == (sw && ssp && !big), "no texel buffer stores: only switch on, pending and within the cap (%#x)", m);
+    }
+    CHECK(!vka_tbuf_img_gw(0, 1, 0, 1, NULL), "an empty texture never takes the SSBO rule");
+
+    // PEANUTS: the switch's value: DM_VK_TBUF_GW_SSBO when set, else the profile's tbuf_ssbo_copy (default off). The rule VKA_ENV applies (strtod, nonzero = on; unset or empty = default)
+    { static const char *const envs[] = {NULL, "", "0", "1", "0.0", "2", "off"};   // "off" is not a number: strtod gives 0, as VKA_ENV does
+      static const int want_set[] = {-1, -1, 0, 1, 0, 1, 0};
+      for (unsigned e = 0; e < sizeof envs / sizeof *envs; e++) for (int prof = 0; prof < 2; prof++) {
+          int got = vka_tbuf_ssbo_eff(envs[e], prof), want = want_set[e] < 0 ? prof : want_set[e];
+          CHECK(got == want, "env %s profile %d: %d, want %d", envs[e] ? envs[e] : "(unset)", prof, got, want);
+      }
+      CHECK(!vka_tbuf_ssbo_eff(NULL, 0) && vka_tbuf_ssbo_eff(NULL, 1), "unset: the profile decides, off by default (another game's profile has no key)");
+      CHECK(!vka_tbuf_ssbo_eff("0", 1) && vka_tbuf_ssbo_eff("1", 0), "a set variable overrides the profile, both ways");
+      CHECK(vka_tbuf_ssbo_mark(vka_tbuf_ssbo_eff(NULL, 1), 4096) && !vka_tbuf_ssbo_mark(vka_tbuf_ssbo_eff(NULL, 0), 4096) && !vka_tbuf_ssbo_mark(vka_tbuf_ssbo_eff("0", 1), 4096),
+            "the effective value is what the write marking and the image choice take: profile on = kept as an SSBO write, off or overridden off = plain opaque write");
+      int cap; CHECK(vka_tbuf_img_gw(0, vka_tbuf_ssbo_eff(NULL, 1), (2u << 20), 1, &cap) && !vka_tbuf_img_gw(0, vka_tbuf_ssbo_eff(NULL, 0), (2u << 20), 1, &cap) && !vka_tbuf_img_gw(0, vka_tbuf_ssbo_eff("0", 1), (2u << 20), 1, &cap),
+            "profile on: the GPU copy for a pending SSBO write; profile off (the default) or the variable 0: the row image"); }
+
     // PEANUTS: The copy kept for the submission (vka_tbuf_copy_live): Hogwarts Legacy's frame, three submissions whose fences the worker reserved before the first is recorded, so
     // vka_fence_last() + 1 is the same in all three (the key the copy was matched by before): a copy made in the first is not bound in the second or third
     { uint64_t fence_last = 7581, sub = 100, made_key_old = fence_last + 1, made_sub = sub;

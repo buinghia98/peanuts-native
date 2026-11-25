@@ -17,6 +17,7 @@
 #ifndef VKA_TBUF_H
 #define VKA_TBUF_H
 #include <stdint.h>
+#include <stdlib.h>   // PEANUTS: strtod (vka_tbuf_ssbo_eff)
 
 enum { VKTB_NONE, VKTB_PLACE, VKTB_CPU, VKTB_GPU };   // an empty texel buffer; a view of guest memory; a view of the CPU's copy; a view of a copy the GPU makes
 #define VKTB_COPY_MAX (1u << 20)                      // the largest buffer read through a copy
@@ -42,6 +43,32 @@ static inline int vka_tbuf_path(int storage, uint64_t bytes, int placed, int ali
 static inline int vka_tbuf_img_choice(int switches, int shape, int cls, int fits, int gw, int placed, int grid) {
     return switches && gw && shape && cls && fits && placed && grid;
 }
+// PEANUTS begin: stores through an ordinary storage buffer (SSBO) over a buffer texture read through an image binding (DM_VK_TBUF_GW_SSBO, live; unset, the game profile's tbuf_ssbo_copy decides: off by default).
+// Fire Emblem Warriors: Three Hopes builds its clustered light lists with a compute dispatch (afe3b29178c63f21) that stores them through a storage buffer, and its pixel
+// shaders read them as a 16384x32 R32 buffer texture: the row image of the CPU's bytes held the list of an earlier frame, so lights blinked on and off while the
+// camera moved. With the switch on, a bounded storage buffer write (VKTB_SSBO_RANGE_MAX at most: a buffer bound without a size covers the whole storage range, the
+// case the note above keeps out) is kept with value bit VKTB_GW_SSBO, and while it is pending a buffer texture over it of up to VKTB_SSBO_IMG_MAX bytes takes
+// upstream's copy on the GPU (vka_tbuf_img_choice's gw). Texel buffer bindings (vka_tbuf_path) never look at that bit: only VKTB_GW_TB counts for them.
+// The value bits of a GW_OPAQUE entry (vka_tex.c gw_t); each bit has its own count of entries holding it, so either question's "none kept" is one load
+enum { VKTB_GW_TB = 1, VKTB_GW_SSBO = 2 };
+#define VKTB_SSBO_RANGE_MAX (64ull << 20)   // the largest storage buffer range kept as an SSBO write
+#define VKTB_SSBO_IMG_MAX (4ull << 20)      // the largest buffer texture an SSBO write sends to the GPU's copy
+// The bits an entry gains when value is merged into one that held had (to count: each bit on its 0 -> 1 transition; dropping the entry takes off all it holds)
+static inline uint32_t vka_tbuf_gw_new_bits(uint32_t had, uint32_t value) { return value & ~had & (VKTB_GW_TB | VKTB_GW_SSBO); }
+// The switch's value: env is DM_VK_TBUF_GW_SSBO's text (NULL or empty = unset), prof the game profile's tbuf_ssbo_copy (DM_GAME_TBUF_SSBO_COPY). A set variable wins over the
+// profile (a developer's override, 0 or 1); unset, the profile decides (default off). The same rule as VKA_ENV("DM_VK_TBUF_GW_SSBO", prof): vka_draw.c reads it live that
+// way, this is the rule written out for the start-up log line (vka_dev.c) and the unit test
+static inline int vka_tbuf_ssbo_eff(const char *env, int prof) { return env && *env ? strtod(env, NULL) != 0 : prof != 0; }
+// A storage buffer binding the shader may store into, range bytes: kept as an SSBO write (1) or as a plain opaque write (0)
+static inline int vka_tbuf_ssbo_mark(int ssbo_sw, uint64_t range) { return ssbo_sw && range && range <= VKTB_SSBO_RANGE_MAX; }
+// vka_tbuf_img_choice's gw for an image binding: a storage texel buffer's stores pending over the range, or (switch on) an SSBO write pending over a texture of up to
+// VKTB_SSBO_IMG_MAX bytes. cap_ok is returned for the log (0: the texture is too large for the SSBO rule)
+static inline int vka_tbuf_img_gw(int tb_pending, int ssbo_sw, uint64_t bytes, int ssbo_pending, int *cap_ok) {
+    int cap = bytes && bytes <= VKTB_SSBO_IMG_MAX;
+    if (cap_ok) *cap_ok = cap;
+    return tb_pending || (ssbo_sw && cap && ssbo_pending);
+}
+// PEANUTS end
 // The answers of one draw or dispatch, by texture ID and shape. A draw asks two or three times for a binding (whether its images are to be made, making them,
 // binding them), and a store the draw's own earlier binding records changes what the tracker says in between: the first answer holds for the draw. fresh: the
 // copy was made, or found made this frame and not written over since, when the draw's images were made; only then is it bound (an older copy is another frame's

@@ -44,6 +44,7 @@ SCALAR = {
     'NDRS_CTL': ('ndrs_ctl', 'int'), 'NRES_LEVELS': ('nres_levels', 'int'),
     'EVENT_WAIT': ('event_wait', 'int'), 'ALIAS_SYNC': ('alias_sync', 'int'), 'OCCLUSION_SPLIT_PASS': ('occlusion_split_pass', 'int'), 'LOW_RAM_PLACE_PART_MB': ('low_ram_place_part_mb', 'int'),
     'LOW_RAM_IMG_CACHE_MAX_MB': ('low_ram_img_cache_max_mb', 'int'), 'LOW_RAM_APP_POOL_MB': ('low_ram_app_pool_mb', 'int'),
+    'TBUF_SSBO_COPY': ('tbuf_ssbo_copy', 'int'),
     'RENDER_DEFAULT_OUT': ('render_default_out', 'str'), 'NRENDER_CFG': ('nrender_cfg', 'int'), 'NRT_POOL': ('nrt_pool', 'int'),
     # PEANUTS(upstream-candidate): window_words / view_scale_words counts, upscale_pass
     'NWINDOW_WORDS': ('nwindow_words', 'int'), 'NVIEW_SCALE_WORDS': ('nview_scale_words', 'int'), 'HAS_UPSCALE_PASS': ('has_upscale_pass', 'int'),
@@ -93,6 +94,7 @@ LAYOUT = [
     ('nview_scale_steps', 'u32'), ('view_scale_steps', 'row[4]:char[48]+u32+u32[13]x2'),
     # PEANUTS(upstream-candidate): view_scale_fixed rows, directly after view_scale_steps (a shared group: before any clone-local field)
     ('nview_scale_fixed', 'u32'), ('view_scale_fixed', 'row[4]:char[48]+u32x2'),
+    ('tbuf_ssbo_copy', 'u32'),   # PEANUTS: the first field after the shared groups (a game-specific key, off by default)
 ]
 
 
@@ -551,6 +553,7 @@ def build_profile_bytes(g, modules_override=None):
     nfx = as_int(val('NVIEW_SCALE_FIXED')); fxs = parse_fixed(val('VIEW_SCALE_FIXED'), nfx)
     p.u32(nfx)
     b, a = pack_rows([row_fixed(*r) for r in fxs], CAPS['view_scale_fixed'], row_fixed('', 0, 0)); p.sub(b, a)
+    p.u32(as_int(val('TBUF_SSBO_COPY')))   # PEANUTS: after the shared groups (as LAYOUT)
     # PEANUTS end
 
     out, _ = p.finish()

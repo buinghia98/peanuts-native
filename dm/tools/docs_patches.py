@@ -168,6 +168,9 @@ SWITCH_BINDING = [
      'why': 'a loss of detail chosen for a game that does not fit a device otherwise'}),
     ('occlusion_split_pass', 'on', {'what': 'split Qualcomm depth passes after counted occlusion queries', 'now': 'game', 'goal': 'host', 'purpose': 'rendering',
      'why': 'separate passes restore disappearing cave geometry on Qualcomm 891.14. The exact interaction between the queries and the depth attachment remains open'}),
+    # PEANUTS: tbuf_ssbo_copy, the host's copy of buffer textures over a compute pass's storage buffer stores
+    ('tbuf_ssbo_copy', 'on', {'what': "buffer textures over a pass's storage buffer stores read through a copy the GPU makes", 'now': 'game', 'goal': 'host', 'purpose': 'rendering',
+     'why': 'the light lists of this game blink between frames without it; off elsewhere because the copy and its pass split cost GPU time and no other game is measured with it: measured on more games, the host could take it for every game'}),
     ('event_wait', 'off', {'what': 'GPU event and sync waits across queues passed on the Vulkan replay', 'now': 'game', 'goal': 'host', 'purpose': 'frame rate',
      'why': 'parked waits cost this game a third of its frame rate and lose the device on Turnip V39; waits that cost no extra submissions would let every game keep them'}),
     # PEANUTS begin(upstream-candidate): alias_sync
