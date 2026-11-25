@@ -60,6 +60,10 @@ The NSP script produced `MarioRabbidsSparksOfHope.ipa` (9.8 GB) on 2026-10-27, c
   - The `sdk` cuts at this host version align regions to 2 MB, while the Mac-validated cut above aligned them to 32 MB: the first boot checks that the Snowdrop reservation (4 GB in the Android layout) succeeds.
   - Whether the game's CPU-filled textures show up without `tex_flush_upload` / `tex_dirty_upload`; try both keys on if UI or lookup textures are black.
   - The sync guard above: whether it is ever hit.
+
+### Prewarm seed
+
+A prewarm seed is recommended for this game: the first battle load on an empty pipeline cache can hang the GPU on Turnip; with a seed made from a play-through, 4 of 4 cold battle loads had no hang. The maintainer builds the seed; the pipeline key list from our runs is available on request.
 <!-- PEANUTS end -->
 
 ## Found on this game
