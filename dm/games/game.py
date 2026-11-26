@@ -201,6 +201,8 @@ def header(g):
     oqs = g.get('occlusion_split_pass', 'off')
     tpr = g.get('tex_pool_range', '0')   # PEANUTS: IDs of the host texture table each texture pool takes at most (hle_nvn.c texpool_range; DM_NVN_TEXPOOL_RANGE overrides): 0 = the pool's size
     if not tpr.isdigit() or int(tpr) and (not 256 <= int(tpr) <= 1048576 or int(tpr) % 256): sys.exit(f'{g.id}: tex_pool_range must be 0 (not set) or a multiple of 256 from 256 to 1048576: {tpr}')
+    afl = g.get('audio_follow', '1')   # PEANUTS: whether the sound follows the game's frame pace (peanuts_audiosync.c; PN_AUDIO_FOLLOW overrides): 0 off, 1 automatic, 2 always
+    if afl not in ('0', '1', '2'): sys.exit(f'{g.id}: audio_follow must be 0, 1 or 2: {afl}')
     if oqs not in ('on', 'off'): sys.exit(f'{g.id}: occlusion_split_pass must be on or off: {oqs}')
     av1 = g.get('av1_decoder', 'hardware')   # Android: AV1 movies on the phone's hardware decoder (MediaCodec, the default) or dav1d frame-parallel (hle_movie_av1.c mav1_send)
     if av1 not in ('hardware', 'dav1d'): sys.exit(f'{g.id}: av1_decoder must be hardware or dav1d: {av1}')
@@ -475,6 +477,7 @@ def header(g):
          f'#define DM_GAME_TEX_SOFT {int(tsf == "on")}',
          f'#define DM_GAME_OCCLUSION_SPLIT_PASS {int(oqs == "on")}',
          f'#define DM_GAME_TEX_POOL_RANGE {int(tpr)}',   # PEANUTS
+         f'#define DM_GAME_AUDIO_FOLLOW {int(afl)}',   # PEANUTS
          f'#define DM_GAME_EVENT_WAIT {int(evw == "on")}',
          f'#define DM_GAME_GPU_TS_SEGMENT {int(gts == "segment")}',
          f'#define DM_GAME_DRAW_BARRIERS_GAME {int(dbr == "game")}',

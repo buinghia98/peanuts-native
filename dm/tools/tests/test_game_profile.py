@@ -310,5 +310,26 @@ class OptionGroups(unittest.TestCase):   # PEANUTS: option_group rows and group=
                 self.assertIn(msg, out)
 
 
+class AudioFollow(unittest.TestCase):   # PEANUTS: audio_follow (peanuts_audiosync.c via peanuts.c pn_as_profile_follow): 1 by default, 0 / 2 taken, others refused
+    def header_text(self, rows):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, ID).mkdir()
+            (Path(d, ID) / 'game.tsv').write_text(TSV + rows)
+            r = subprocess.run([sys.executable, str(GAME), 'header', ID, str(Path(d, ID) / 'game.h')], env={**os.environ, 'DM_GAMES_DIR': d}, capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return (Path(d, ID) / 'game.h').read_text()
+
+    def test_values(self):
+        self.assertIn('#define DM_GAME_AUDIO_FOLLOW 1', self.header_text(''))
+        for v in ('0', '1', '2'):
+            self.assertIn(f'#define DM_GAME_AUDIO_FOLLOW {v}', self.header_text(f'audio_follow\t{v}\n'))
+
+    def test_rejected(self):
+        for v in ('off', '3', '-1', ''):
+            rc, out = header(f'audio_follow\t{v}\n')
+            self.assertNotEqual(rc, 0, v)
+            self.assertIn('audio_follow must be 0, 1 or 2', out)
+
+
 if __name__ == '__main__':
     unittest.main()
