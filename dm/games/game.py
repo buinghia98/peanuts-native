@@ -377,9 +377,33 @@ def header(g):
                     mk = tok.split('=', 1)[1]
                     if not re.fullmatch(r'[A-Za-z0-9_]+', mk):
                         sys.exit(f'{g.id}: option needs takes a fixup marker: {tok}')
+                elif tok.startswith('group='):   # PEANUTS: option groups (one radio choice)
+                    if not re.fullmatch(r'[a-z0-9_]+', tok.split('=', 1)[1]):
+                        sys.exit(f'{g.id}: option group takes a lowercase name ([a-z0-9_]): {tok}')
                 else:
-                    sys.exit(f'{g.id}: option unknown attribute (expected restart|live, implies=<ENV>, needs=<marker>): {tok}')
+                    sys.exit(f'{g.id}: option unknown attribute (expected restart|live, implies=<ENV>, needs=<marker>, group=<name>): {tok}')
     option_names = {r[0]: r for r in g.values('option')}
+    # PEANUTS begin: option groups. `option_group <name> <label> <description>` titles the options whose row says group=<name>: the launcher shows them as one
+    # radio choice (Default, then each member), so at most one member is on. A member is a restart option without implies= (nothing else can turn it on).
+    def opt_attrs(r): return ' '.join(r[3:]).split()
+    option_group = {r[0]: next((t.split('=', 1)[1] for t in opt_attrs(r) if t.startswith('group=')), None) for r in g.values('option')}
+    groups = {}
+    for r in g.values('option_group'):
+        if len(r) != 3 or not re.fullmatch(r'[a-z0-9_]+', r[0]) or not r[1].strip() or not r[2].strip() or r[0] in groups:
+            sys.exit(f'{g.id}: option_group takes a unique <name> ([a-z0-9_]) <label> <one-line description>: {r}')
+        groups[r[0]] = r
+    for env, grp in option_group.items():
+        if grp is None: continue
+        if grp not in groups: sys.exit(f'{g.id}: option {env} names group {grp} without an option_group row')
+        if 'live' in opt_attrs(option_names[env]) or any(t.startswith('implies=') for t in opt_attrs(option_names[env])):
+            sys.exit(f'{g.id}: option {env} in group {grp} must be a restart option without implies=')
+    for r in g.values('option'):
+        imp = next((t.split('=', 1)[1] for t in opt_attrs(r) if t.startswith('implies=')), None)
+        if imp and option_group.get(imp): sys.exit(f'{g.id}: option {r[0]} implies {imp}, a member of group {option_group[imp]}')
+    for name in groups:
+        if sum(1 for v in option_group.values() if v == name) < 2: sys.exit(f'{g.id}: option_group {name} needs at least two options')
+    option_words = {}
+    # PEANUTS end
     option_sites = set()
     mains = {b.get('main') for b in g.builds().values()}
     for r in g.values('option_patch'):
@@ -389,8 +413,12 @@ def header(g):
             sys.exit(f'{g.id}: option_patch requires a restart option: {r[0]}')
         site = (r[1], int(r[2], 16))
         if site in option_sites:
-            sys.exit(f'{g.id}: option_patch repeats a main code word: {r}')
+            # PEANUTS: options of one group may patch the same word (only one is ever on), with the same expected word; never one option twice
+            prev = option_words[site]
+            if not (option_group[r[0]] and all(option_group[e] == option_group[r[0]] for e, _ in prev) and all(e != r[0] and x == r[3] for e, x in prev)):
+                sys.exit(f'{g.id}: option_patch repeats a main code word: {r}')
         option_sites.add(site)
+        option_words.setdefault(site, []).append((r[0], r[3]))   # PEANUTS
     if len(option_sites) > 128:
         sys.exit(f'{g.id}: option_patch: at most 128 code words')
     # Shaders whose subgroup operations run as subgroups of one invocation on Qualcomm's own driver even where the device has them (vka_shader.c single_lane, one_lane_forced;
