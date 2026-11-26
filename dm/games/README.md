@@ -238,6 +238,7 @@ One row per profile; the notes are each profile's `README.md`.
 | [Yoru, Tomosu](0100C2901153C000/README.md) | `0100C2901153C000` | v0 (base, Japanese release) | 9.5.0 | Nippon Ichi Software's engine on nn::gfx (NintendoWare Atk / Font) | NVN |
 | [Yoshi and the Mysterious Book](0400245021D2C000/README.md) | `0400245021D2C000` | 1.0.2 (Switch 2) | 20.5.15 (Ounce) | Unreal Engine 5.4.4 | NVN2 |
 | [Yoshi's Crafted World](01006000040C2000/README.md) | `01006000040C2000` | 1.0.1 | 4.4.1 | Unreal Engine 4.18 era (Good-Feel) | NVN |
+| [Ys X: Nordics](0100BAC01E57E000/README.md) | `0100BAC01E57E000` | 1.0.3 | 17.5.8 | Nihon Falcom | NVN | <!-- PEANUTS -->
 
 ## Keys
 
