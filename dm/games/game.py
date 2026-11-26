@@ -199,6 +199,8 @@ def header(g):
     evw = g.get('event_wait', 'on')   # Android: GPU event and sync waits across NVN queues honoured by the Vulkan replay (vka_worker.c qs_on; DM_VK_EVENT_WAIT overrides): on / off
     if evw not in ('on', 'off'): sys.exit(f'{g.id}: event_wait must be on or off: {evw}')
     oqs = g.get('occlusion_split_pass', 'off')
+    tpr = g.get('tex_pool_range', '0')   # PEANUTS: IDs of the host texture table each texture pool takes at most (hle_nvn.c texpool_range; DM_NVN_TEXPOOL_RANGE overrides): 0 = the pool's size
+    if not tpr.isdigit() or int(tpr) and (not 256 <= int(tpr) <= 1048576 or int(tpr) % 256): sys.exit(f'{g.id}: tex_pool_range must be 0 (not set) or a multiple of 256 from 256 to 1048576: {tpr}')
     if oqs not in ('on', 'off'): sys.exit(f'{g.id}: occlusion_split_pass must be on or off: {oqs}')
     av1 = g.get('av1_decoder', 'hardware')   # Android: AV1 movies on the phone's hardware decoder (MediaCodec, the default) or dav1d frame-parallel (hle_movie_av1.c mav1_send)
     if av1 not in ('hardware', 'dav1d'): sys.exit(f'{g.id}: av1_decoder must be hardware or dav1d: {av1}')
@@ -444,6 +446,7 @@ def header(g):
          f'#define DM_GAME_TEX_DYN_SLOTS {int(tds == "on")}',
          f'#define DM_GAME_TEX_SOFT {int(tsf == "on")}',
          f'#define DM_GAME_OCCLUSION_SPLIT_PASS {int(oqs == "on")}',
+         f'#define DM_GAME_TEX_POOL_RANGE {int(tpr)}',   # PEANUTS
          f'#define DM_GAME_EVENT_WAIT {int(evw == "on")}',
          f'#define DM_GAME_GPU_TS_SEGMENT {int(gts == "segment")}',
          f'#define DM_GAME_DRAW_BARRIERS_GAME {int(dbr == "game")}',

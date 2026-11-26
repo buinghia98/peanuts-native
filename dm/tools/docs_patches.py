@@ -135,6 +135,8 @@ SHADER_BINDING = [
 # Profile switches: (key, the start of its value ('' = any), entry). A key is per-game data, so `game`; its goal is `host` where it is the semantics every game should get
 DEFAULT_SOON = 'a default for every game after `regress.py check` on the games'
 SWITCH_BINDING = [
+    ('tex_pool_range', '', {'what': "each texture pool limited to that many IDs of the host's 2^20-entry texture table", 'now': 'game', 'goal': 'host', 'purpose': 'rendering',   # PEANUTS
+     'why': "the range a pool needs is known only from the IDs the game registers, not when the pool is made: a host that numbers pools by the IDs they use would make it unneeded"}),
     ('option_patch', '', {'what': 'opt-in expected-byte code words', 'now': 'build', 'goal': 'build', 'purpose': 'rendering', 'why': 'literal instructions of a registered main build; an explicit restart option selects them independently of FPS'}),
     ('render_cond', '', {'what': 'NVN conditional rendering', 'now': 'game', 'goal': 'host', 'purpose': 'rendering',
      'why': f'what the GPU does; off by default only because other games drew everything before: {DEFAULT_SOON}'}),

@@ -255,6 +255,7 @@ DM_NVN_TBDR	developer	Graphics			text			both
 DM_NVN_TEXCPU	developer	Diagnostics			text			both						
 DM_NVN_TEXDUMP	developer	Diagnostics			text			both						
 DM_NVN_TEXINFO	developer	Diagnostics			text			both						
+DM_NVN_TEXPOOL_RANGE	developer	Memory			text			both						
 DM_NVN_TEXRAW	developer	Diagnostics			text			both						
 DM_NVN_TEXSNAP	developer	Diagnostics			text			both						
 DM_NVN_TREG_ID	developer	Diagnostics			text			both						
