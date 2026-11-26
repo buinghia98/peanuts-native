@@ -651,7 +651,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (prof != null && prof.hasFpsVariant() && Prefs.limited(id) && fpsModeAtStart != FrameRateCaps.GAME_OWNED) {
             String fv = prof.fpsVariant(FrameRateCaps.limitRate(fpsModeAtStart, Prefs.displayMaxHz(getDisplay())));
             if (fv != null && pack != null && pack.variantReady(fv)) fpsVariantAtStart = fv;
-            else {
+            else if (fv != null) {   // PEANUTS: a cap without a variant of its own (Ys X: Nordics' 30; its 60 starts one) starts the game's own code at that cap, not Game owned
                 fpsVariantMissing = true;
                 fpsModeAtStart = FrameRateCaps.GAME_OWNED;
                 String note = "[nxlaunch] frame rate: the build has no complete " + fv + " variant (pack.tsv variant row and " + fv + "/main.patched.bin): started Game owned";
