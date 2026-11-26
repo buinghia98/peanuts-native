@@ -1171,6 +1171,10 @@ NVN(nvnQueueWaitSync, NVNboolean, NVNqueue *q, const NVNsync *s) {
 // ZCull data: the host does no ZCull, so there is nothing to save / restore
 NVN(nvnCommandBufferRestoreZCullData, void, NVNcommandBuffer *c, NVNbufferAddress a, size_t n) { (void)c; (void)a; (void)n; }
 NVN(nvnCommandBufferSaveZCullData, void, NVNcommandBuffer *c, NVNbufferAddress a, size_t n) { (void)c; (void)a; (void)n; }
+// PEANUTS: ResolveDepthBuffer: on the Switch the bound depth target is decompressed in place so it can be sampled (I: no public NVN text; inferred from the name and from
+// Ys X: Nordics, which calls it about 2.6 times a second from the title on). The host keeps no compressed depth: a draw that samples a depth target is ordered after the
+// pass that wrote it by the replay's barriers, so there is nothing to resolve. Before, a red "unimplemented" line each call (2,045 in an 11-minute run)
+NVN(nvnCommandBufferResolveDepthBuffer, void, NVNcommandBuffer *c) { (void)c; static _Atomic int once; if (!atomic_exchange(&once, 1)) LOG("[nvn] ResolveDepthBuffer: nothing to resolve on the host (no compressed depth); later calls not logged"); }
 // The stencil test ZCull's stencil cull assumes (a stencil function, then its reference and mask): only a hint for culling ahead of the real stencil test, which the draws'
 // depth-stencil state still does. The host does no ZCull, so there is nothing to set (Donkey Kong Bananza: EQUAL, 0xff)
 NVN_NOPROTO(nvnCommandBufferSetStencilCullCriteria, void, NVNcommandBuffer *c, int func, int ref) { (void)c; (void)func; (void)ref; }
